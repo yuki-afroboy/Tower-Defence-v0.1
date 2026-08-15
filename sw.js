@@ -1,6 +1,6 @@
 /* オフラインでも遊べるようにするための Service Worker
    (一度読み込めば、あとは電波がなくても起動します) */
-var CACHE = 'lfd-v1';
+var CACHE = 'lfd-v2';
 var FILES = [
   './',
   './index.html',
@@ -32,15 +32,23 @@ self.addEventListener('activate', function (ev) {
   );
 });
 
+/* キャッシュをすぐ返しつつ、裏で新しい版を取り直す方式。
+   ・オフラインでもすぐ起動する
+   ・ゲームを更新したときも、次に開いたときには新しい版になる */
 self.addEventListener('fetch', function (ev) {
   if (ev.request.method !== 'GET') return;
+  if (new URL(ev.request.url).origin !== self.location.origin) return;
   ev.respondWith(
-    caches.match(ev.request).then(function (hit) {
-      return hit || fetch(ev.request).then(function (res) {
-        var copy = res.clone();
-        caches.open(CACHE).then(function (c) { c.put(ev.request, copy); });
-        return res;
-      }).catch(function () { return caches.match('./index.html'); });
+    caches.open(CACHE).then(function (cache) {
+      return cache.match(ev.request).then(function (hit) {
+        var fromNet = fetch(ev.request).then(function (res) {
+          if (res && res.ok) cache.put(ev.request, res.clone());
+          return res;
+        }).catch(function () {
+          return hit || cache.match('./index.html');
+        });
+        return hit || fromNet;
+      });
     })
   );
 });
