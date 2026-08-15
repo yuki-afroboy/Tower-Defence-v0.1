@@ -1,0 +1,28 @@
+{
+  "name": "last-fortress-defense",
+  "version": "1.0.0",
+  "description": "スマートフォンのブラウザで遊べる2Dタワーディフェンス",
+  "directories": {
+    "test": "tests"
+  },
+  "scripts": {
+    "start": "python3 -m http.server 8000",
+    "test": "node --test tests/engine.test.mjs tests/balance.test.mjs",
+    "test:browser": "node --test tests/browser.test.mjs",
+    "test:all": "node --test tests/engine.test.mjs tests/balance.test.mjs tests/browser.test.mjs",
+    "balance": "node tools/balance-sim.mjs",
+    "shot": "node tools/shot.mjs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yuki-afroboy/Tower-Defence-v0.1.git"
+  },
+  "bugs": {
+    "url": "https://github.com/yuki-afroboy/Tower-Defence-v0.1/issues"
+  },
+  "homepage": "https://github.com/yuki-afroboy/Tower-Defence-v0.1#readme",
+  "devDependencies": {
+    "playwright": "^1.62.1"
+  },
+  "private": true
+}

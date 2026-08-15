@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#10151d">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Last Fortress Defense</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="app">
+
+  <header id="hud">
+    <div class="stat" id="stat-hp" title="拠点HP">
+      <span class="ico">🛡️</span><span class="val" id="hp-val">20</span>
+      <span class="bar"><i id="hp-bar"></i></span>
+    </div>
+    <div class="stat" id="stat-gold" title="ゴールド">
+      <span class="ico">🪙</span><span class="val" id="gold-val">250</span>
+    </div>
+    <div class="stat" id="stat-wave" title="ウェーブ">
+      <span class="ico">🌊</span><span class="val"><b id="wave-val">0</b>/15</span>
+    </div>
+    <div class="hud-btns">
+      <button id="btn-speed" class="mini" aria-label="ゲーム速度">×1</button>
+      <button id="btn-pause" class="mini" aria-label="一時停止">❚❚</button>
+      <button id="btn-sound" class="mini" aria-label="音を消す">♪</button>
+    </div>
+  </header>
+
+  <main id="stage">
+    <canvas id="game" width="360" height="520"></canvas>
+    <div id="boss-hp" hidden><span>BOSS</span><i></i></div>
+    <div id="toast" aria-live="polite"></div>
+    <div id="wave-banner"></div>
+  </main>
+
+  <footer id="dock">
+    <div id="wave-row">
+      <div id="wave-preview">次のWave: -</div>
+      <button id="btn-wave" class="primary">WAVE 1 を開始</button>
+    </div>
+
+    <div id="palette"></div>
+
+    <div id="build-hint" hidden>
+      <span id="build-hint-text">設置したい場所をタップ</span>
+      <button id="btn-cancel-build" class="ghost">キャンセル</button>
+    </div>
+
+    <section id="tower-panel" hidden>
+      <div class="tp-head">
+        <canvas class="tp-icon" width="44" height="44"></canvas>
+        <div class="tp-title">
+          <b id="tp-name">Archer</b>
+          <span id="tp-level">Lv1</span>
+        </div>
+        <button id="btn-close-panel" class="ghost" aria-label="閉じる">✕</button>
+      </div>
+      <div id="tp-stats"></div>
+      <div class="tp-actions">
+        <button id="btn-upgrade" class="primary">強化 <span id="up-cost">55</span></button>
+        <button id="btn-sell" class="danger">売却 <span id="sell-val">36</span></button>
+      </div>
+    </section>
+  </footer>
+
+  <div id="overlay" hidden>
+    <div class="sheet">
+      <h1 id="ov-title">LAST FORTRESS DEFENSE</h1>
+      <p id="ov-sub">拠点を守り抜け</p>
+      <div id="ov-body"></div>
+      <button id="ov-btn" class="primary big">スタート</button>
+      <button id="ov-btn2" class="ghost" hidden>最初からやり直す</button>
+    </div>
+  </div>
+
+</div>
+
+<script src="src/config.js"></script>
+<script src="src/engine.js"></script>
+<script src="src/renderer.js"></script>
+<script src="src/sfx.js"></script>
+<script src="src/ui.js"></script>
+</body>
+</html>
