@@ -9,18 +9,33 @@
 
 ## 1. 遊び方
 
-### 起動する
+### スマホだけで遊ぶ（パソコン不要）
 
-いちばん簡単な方法：
+**方法A：URLを開くだけ（いちばん簡単）**
 
-1. このフォルダの `index.html` をダブルクリックする
-2. ブラウザが開いてタイトル画面が出る
-3. 「スタート」を押す
+GitHub Pagesで公開してある場合は、スマホのブラウザでそのURLを開くだけです。
+さらに、ブラウザのメニューから **「ホーム画面に追加」** をすると、
+アプリのようにアイコンから起動でき、**電波がなくても遊べます**（オフライン対応済み）。
 
-スマートフォンで遊びたいときは、パソコンで簡易サーバーを立てて、同じWi-Fiのスマホから開きます。
+**方法B：1ファイルをスマホに保存する（非公開のまま遊ぶ）**
+
+`dist/LastFortressDefense.html` は、**この1ファイルだけでゲームが動きます**
+（CSS・JavaScript・アイコンを全部埋め込み済み。通信不要）。
+
+1. スマホのブラウザでGitHubのこのリポジトリを開く
+2. `dist/LastFortressDefense.html` を開き、「Download raw file」で保存
+3. 保存したファイルをブラウザで開く
+   - Android：ファイルアプリからブラウザで開けます
+   - iPhone：「ファイル」アプリに保存 → 長押し → 共有 → 「Safari」等で開く
+
+### パソコンで遊ぶ
+
+`index.html` をダブルクリックするだけです。
+
+同じWi-Fiのスマホから遊びたいときは、パソコンで簡易サーバーを立てます。
 
 ```bash
-npm start          # http://localhost:8000 で開く
+npm start          # http://localhost:8000
 ```
 
 スマホからは `http://<パソコンのIPアドレス>:8000` を開いてください。
@@ -107,6 +122,10 @@ Waveの最中に「次を呼ぶ」を押すと、**ボーナスゴールドを�
 
 ```
 index.html          ページ本体（ここを開けば遊べる）
+manifest.webmanifest ホーム画面に追加するための設定
+sw.js               オフラインで遊ぶための仕組み（Service Worker）
+assets/             ホーム画面用アイコン
+dist/               1ファイル完結版（スマホに保存して遊ぶ用）
 css/style.css       見た目（スマホ縦画面用）
 src/
   config.js         ゲームの数値すべて（バランス調整はここ）
@@ -140,7 +159,11 @@ npm run test:all     # 全部
 
 npm run balance      # 戦略ごとの強さを一覧表示（バランス調整用）
 npm run shot         # tests/screenshots/ に画面を保存
+npm run build        # dist/LastFortressDefense.html（1ファイル版）を作り直す
+npm run icons        # assets/ のアイコンを作り直す
 ```
+
+`src/` や `css/` を編集したら、`npm run build` を実行して1ファイル版を作り直してください。
 
 ### バランスを変えたいとき
 

@@ -11,7 +11,8 @@ import { chromium } from 'playwright';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.join(here, '..');
-const PAGE_URL = pathToFileURL(path.join(root, 'index.html')).href;
+/* LFD_URL を指定すると別のファイル(1ファイル版など)をテストできる */
+const PAGE_URL = process.env.LFD_URL || pathToFileURL(path.join(root, 'index.html')).href;
 const SHOTS = path.join(root, 'tests', 'screenshots');
 
 /* この環境に入っている Chromium を使う(無ければ Playwright 既定) */
