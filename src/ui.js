@@ -47,6 +47,8 @@
     bannerTimer = setTimeout(function () { bannerEl.classList.remove('show'); }, 1500);
   }
 
+  var lastHud = {};
+
   /* ---- タワー選択パレット --------------------------------------------- */
   var paletteEl = $('palette');
   var cards = {};
@@ -89,8 +91,12 @@
     Object.keys(cards).forEach(function (k) {
       cards[k].classList.toggle('selected', k === id);
     });
-    $('build-hint').hidden = false;
-    $('build-hint-text').textContent = C.TOWERS[id].name + ' を置く場所をタップ';
+    $('btn-wave').hidden = true;
+    $('btn-cancel-build').hidden = false;
+    var pv = $('wave-preview');
+    pv.classList.add('building');
+    pv.textContent = C.TOWERS[id].name + ' を置く場所をタップ';
+    lastHud.pv = null;
     Sfx.unlock();
   }
 
@@ -99,7 +105,10 @@
     renderer.buildType = null;
     renderer.hoverCell = null;
     Object.keys(cards).forEach(function (k) { cards[k].classList.remove('selected'); });
-    $('build-hint').hidden = true;
+    $('btn-wave').hidden = false;
+    $('btn-cancel-build').hidden = true;
+    $('wave-preview').classList.remove('building');
+    lastHud.pv = null;
   }
 
   /* ---- タワー詳細パネル ----------------------------------------------- */
@@ -109,7 +118,7 @@
     state.selected = t;
     renderer.selected = t;
     panelEl.hidden = false;
-    paletteEl.style.display = 'none';
+    paletteEl.style.visibility = 'hidden';
     cancelBuild();
     updatePanel(true);
   }
@@ -118,7 +127,7 @@
     state.selected = null;
     renderer.selected = null;
     panelEl.hidden = true;
-    paletteEl.style.display = '';
+    paletteEl.style.visibility = '';
   }
 
   function fmt(n) {
@@ -175,7 +184,6 @@
   }
 
   /* ---- HUD ------------------------------------------------------------ */
-  var lastHud = {};
   function updateHud() {
     var hp = Math.max(0, game.hp);
     if (lastHud.hp !== hp) {
@@ -231,7 +239,10 @@
         return C.ENEMIES[k].name + '×' + parts[k];
       }).join(' / ');
     }
-    if (lastHud.pv !== pv) { $('wave-preview').textContent = pv; lastHud.pv = pv; }
+    if (!state.buildType && lastHud.pv !== pv) {
+      $('wave-preview').textContent = pv;
+      lastHud.pv = pv;
+    }
   }
 
   /* ---- ボスHPバー ------------------------------------------------------ */

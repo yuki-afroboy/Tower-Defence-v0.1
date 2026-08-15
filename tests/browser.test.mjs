@@ -170,15 +170,77 @@ test('設置: タッチ操作(指)でも設置できる', async () => {
   assert.equal(after.towers, before.towers + 1, 'タッチで設置できない');
 });
 
-test('建設ヒント: 建設モードのときだけ表示される', async () => {
+test('建設モード: 案内とキャンセルボタンが入れ替わりで出る', async () => {
   await resetUi();
-  assert.equal(await page.isVisible('#build-hint'), false, '建設モードでないのにヒントが出ている');
+  assert.equal(await page.isVisible('#btn-wave'), true);
+  assert.equal(await page.isVisible('#btn-cancel-build'), false);
+
   await page.locator('.tw-card[data-type="cannon"]').click();
-  assert.equal(await page.isVisible('#build-hint'), true, '建設モードでヒントが出ない');
-  assert.match(await page.textContent('#build-hint-text'), /Cannon/);
+  assert.equal(await page.isVisible('#btn-cancel-build'), true, 'キャンセルボタンが出ない');
+  assert.equal(await page.isVisible('#btn-wave'), false, 'Wave開始ボタンが残っている');
+  assert.match(await page.textContent('#wave-preview'), /Cannon/, '案内文が出ていない');
+
   await page.click('#btn-cancel-build');
-  assert.equal(await page.isVisible('#build-hint'), false, 'キャンセルしてもヒントが消えない');
+  assert.equal(await page.isVisible('#btn-cancel-build'), false, 'キャンセルできていない');
+  assert.equal(await page.isVisible('#btn-wave'), true, 'Wave開始ボタンが戻らない');
   assert.equal((await page.locator('.tw-card.selected').count()), 0, '選択状態が解除されない');
+  assert.match(await page.textContent('#wave-preview'), /Wave/, '次Wave予告が戻らない');
+});
+
+test('レイアウト: タワーを選んでも盤面が動かない(押し間違い防止)', async () => {
+  await resetUi();
+  const boxOf = () => page.evaluate(() => {
+    const r = document.getElementById('game').getBoundingClientRect();
+    return { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) };
+  });
+  const idle = await boxOf();
+  await page.locator('.tw-card[data-type="sniper"]').click();
+  await page.waitForTimeout(250);
+  const building = await boxOf();
+  assert.deepEqual(building, idle, `建設モードで盤面が動いた idle=${JSON.stringify(idle)} 建設中=${JSON.stringify(building)}`);
+
+  await page.click('#btn-cancel-build');
+  await page.waitForTimeout(250);
+  await tapCell(2, 2);                       /* タワーをタップしてパネルを開く */
+  await page.waitForTimeout(250);
+  const panel = await boxOf();
+  assert.deepEqual(panel, idle, `パネル表示で盤面が動いた idle=${JSON.stringify(idle)} パネル=${JSON.stringify(panel)}`);
+  await resetUi();
+});
+
+test('レイアウト: 小さい画面(375x667)でも盤面が動かない', async () => {
+  const small = await browser.newContext({
+    viewport: { width: 375, height: 667 }, isMobile: true, hasTouch: true
+  });
+  const sp = await small.newPage();
+  await sp.goto(PAGE_URL);
+  await sp.click('#ov-btn');
+  await sp.waitForTimeout(300);
+  const boxOf = () => sp.evaluate(() => {
+    const r = document.getElementById('game').getBoundingClientRect();
+    return { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) };
+  });
+  const idle = await boxOf();
+  const bx = await sp.locator('#game').boundingBox();
+
+  await sp.locator('.tw-card[data-type="ice"]').click();
+  await sp.waitForTimeout(250);
+  assert.deepEqual(await boxOf(), idle, '建設モードで盤面が動いた(小画面)');
+
+  await sp.mouse.click(bx.x + 2.5 * bx.width / 9, bx.y + 2.5 * bx.height / 13);
+  await sp.waitForTimeout(200);
+  await sp.mouse.click(bx.x + 2.5 * bx.width / 9, bx.y + 2.5 * bx.height / 13);
+  await sp.waitForTimeout(300);
+  assert.equal(await sp.isVisible('#tower-panel'), true, 'パネルが開いていない(小画面)');
+  assert.deepEqual(await boxOf(), idle, 'パネル表示で盤面が動いた(小画面)');
+
+  const fits = await sp.evaluate(() => {
+    const p = document.getElementById('tower-panel').getBoundingClientRect();
+    return { bottom: Math.round(p.bottom), innerH: window.innerHeight, top: Math.round(p.top) };
+  });
+  assert.ok(fits.bottom <= fits.innerH + 1, 'パネルが画面下からはみ出している');
+  assert.ok(fits.top >= 0, 'パネルが画面上からはみ出している');
+  await small.close();
 });
 
 test('強化: タワーをタップするとパネルが開き、強化できる', async () => {

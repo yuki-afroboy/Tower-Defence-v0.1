@@ -10,7 +10,7 @@ const ctx = await b.newContext({ viewport:{width:390,height:844}, isMobile:true,
 const p = await ctx.newPage();
 const errs=[]; p.on('pageerror',e=>errs.push(e.message));
 p.on('console',m=>{ if(m.type()==='error') errs.push(m.text()); });
-await p.goto(pathToFileURL(path.join(root,'index.html')).href);
+await p.goto(process.env.LFD_URL || pathToFileURL(path.join(root,'index.html')).href);
 await p.click('#ov-btn');
 await p.click('#btn-speed');          /* ×2 */
 
