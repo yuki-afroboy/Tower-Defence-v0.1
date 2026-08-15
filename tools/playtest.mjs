@@ -30,24 +30,49 @@ async function upgrade(c,r){
   if (!(await p.locator('#btn-upgrade').isDisabled())) await p.click('#btn-upgrade');
   await p.click('#btn-close-panel');
 }
+/* 使えるスキルがあれば使う */
+async function useAbilities(){
+  if (await p.locator('.ab-btn[data-ability="freeze"].ready').count()) {
+    const n = await p.evaluate(()=>window.LFD.app.game.enemies.length);
+    if (n >= 6) await p.locator('.ab-btn[data-ability="freeze"]').click();
+  }
+  if (await p.locator('.ab-btn[data-ability="meteor"].ready').count()) {
+    const target = await p.evaluate(()=>{
+      const g=window.LFD.app.game;
+      if(!g.enemies.length) return null;
+      const e=g.enemies.reduce((a,b)=>a.dist>b.dist?a:b);
+      return {x:e.x,y:e.y};
+    });
+    if (target) {
+      await p.locator('.ab-btn[data-ability="meteor"]').click();
+      const box = await p.locator('#game').boundingBox();
+      await p.touchscreen.tap(box.x+target.x*box.width/9, box.y+target.y*box.height/13);
+      await p.waitForTimeout(120);
+    }
+  }
+}
+
 async function runWave(){
   await p.click('#btn-wave');
   const t0=Date.now();
   while (Date.now()-t0 < 120000) {
     const s = await state();
     if (s.phase!=='wave') return s;
+    await useAbilities();
     await p.waitForTimeout(500);
   }
   throw new Error('Waveが終わらない');
 }
 
 await place('archer',2,2); await place('archer',5,2); await place('archer',3,4);
-for (let w=1; w<=5; w++){
+for (let w=1; w<=8; w++){
   const s = await runWave();
   console.log(`Wave${w} 終了: HP=${s.hp} Gold=${s.gold} 撃破=${s.killed} タワー=${s.towers}`);
   if (w===2) await place('ice',6,4);
   if (w===3) await upgrade(2,2);
   if (w===4) await place('cannon',2,6);
+  if (w===6) { await upgrade(2,2); await upgrade(6,4); }
+  if (w===7) await place('sniper',6,10);
 }
 const fin = await state();
 console.log('結果:', JSON.stringify(fin));

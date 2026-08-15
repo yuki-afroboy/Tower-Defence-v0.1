@@ -13,7 +13,10 @@
     "balance": "node tools/balance-sim.mjs",
     "shot": "node tools/shot.mjs",
     "build": "node tools/build-single.mjs",
-    "icons": "node tools/make-icons.mjs"
+    "icons": "node tools/make-icons.mjs",
+    "balance:sk": "node tools/balance-sim.mjs --abilities",
+    "winrate": "node tools/winrate.mjs",
+    "winrate:sk": "node tools/winrate.mjs --abilities"
   },
   "repository": {
     "type": "git",

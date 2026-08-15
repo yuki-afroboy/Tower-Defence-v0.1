@@ -10,7 +10,8 @@ const C = LFD.Config;
 const STEP = 1 / 60;
 
 const b = (type, c, r) => ({ a: 'build', type, c, r });
-const u = (c, r) => ({ a: 'up', c, r });
+/* branch を渡すと Lv4 の進化先を指定できる */
+const u = (c, r, branch) => ({ a: 'up', c, r, branch });
 
 /* 道の近くの良い設置マス(強い順のおおよそ) */
 const GOOD_SPOTS = [
@@ -87,8 +88,28 @@ const PLAN_NAIVE = [];
 }
 
 /* ---- シミュレーション ----------------------------------------------- */
+/* 「そこそこ上手い人」がスキルを使う想定の簡易AI */
+function autoAbilities(g) {
+  if (g.abilityReady('freeze') && g.enemies.length >= 8) {
+    g.useAbility('freeze');
+    return;
+  }
+  if (!g.abilityReady('meteor') || g.enemies.length === 0) return;
+  const R = C.ABILITIES.meteor.radius;
+  let best = null, bestCount = 0;
+  for (const e of g.enemies) {
+    let n = 0;
+    for (const o of g.enemies) {
+      if ((o.x - e.x) ** 2 + (o.y - e.y) ** 2 <= R * R) n += o.def.boss ? 4 : o.type === 'tank' ? 2 : 1;
+    }
+    if (n > bestCount) { bestCount = n; best = e; }
+  }
+  if (best && bestCount >= 3) g.useAbility('meteor', best.x, best.y);
+}
+
 export function runPlan(plan, opts = {}) {
   const g = new LFD.Game({ seed: opts.seed ?? 7 });
+  const useAbilities = !!opts.abilities;
   let idx = 0;
 
   function spend() {
@@ -103,10 +124,10 @@ export function runPlan(plan, opts = {}) {
       } else {
         const t = g.towerAt(step.c, step.r);
         if (!t) { idx++; continue; }
-        const cost = g.upgradeCost(t);
+        const cost = g.upgradeCost(t, step.branch);
         if (cost === null) { idx++; continue; }
         if (g.gold < cost) break;
-        g.upgrade(t);
+        g.upgrade(t, step.branch);
       }
       idx++;
     }
@@ -122,6 +143,7 @@ export function runPlan(plan, opts = {}) {
     const leaks = {};
     while (g.phase === 'wave' && t < 400) {
       g.update(STEP); t += STEP;
+      if (useAbilities) autoAbilities(g);
       for (const ev of g.drainEvents()) {
         if (ev.type === 'leak') leaks[ev.data.type] = (leaks[ev.data.type] || 0) + 1;
       }
@@ -146,9 +168,11 @@ export const STRATEGIES = [
 ];
 
 function main() {
+  const withAbilities = process.argv.includes('--abilities');
+  if (withAbilities) console.log('(アクティブスキルを使うAI付きで実行)');
   const summary = [];
   for (const [name, plan, expect] of STRATEGIES) {
-    const { game, waves, planUsed, planTotal } = runPlan(plan);
+    const { game, waves, planUsed, planTotal } = runPlan(plan, { abilities: withAbilities });
     const status = game.phase === 'victory' ? 'VICTORY' : game.phase === 'defeat' ? 'DEFEAT ' : '???';
     console.log(`\n== ${name} == ${status} 最終HP=${game.hp}/${game.maxHp} 到達Wave=${game.wave} タワー=${game.towers.length} 計画=${planUsed}/${planTotal}`);
     console.log('   HP: ' + waves.map(w => `${w.wave}:${w.hp}${w.lost ? `(-${w.lost})` : ''}`).join(' '));

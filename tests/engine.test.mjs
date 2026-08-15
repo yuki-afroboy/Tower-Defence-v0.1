@@ -366,3 +366,178 @@ test('経済: 強いタワーほど高く、必要ゴールドの総額も多い
   assert.equal(C.BALANCE.startGold >= C.TOWERS.archer.cost * 3, true,
     '開始ゴールドで最低3基は置けるべき');
 });
+
+/* ---- Lv4の進化分岐 ------------------------------------------------------ */
+
+test('進化分岐: Lv3から2つの進化先を選べる', () => {
+  const g = newGame();
+  g.gold = 99999;
+  const t = g.build(2, 2, 'archer').tower;
+  assert.equal(g.upgradeOptions(t).length, 1, 'Lv1では分岐しない');
+  g.upgrade(t); g.upgrade(t);
+
+  const opts = g.upgradeOptions(t);
+  assert.equal(opts.length, 2, 'Lv3で2択にならない');
+  assert.ok(opts[0].label && opts[1].label, '進化先に名前がない');
+  assert.notDeepEqual(opts[0].stats, opts[1].stats, '2つの進化先の性能が同じ');
+
+  assert.equal(g.upgrade(t, 1).ok, true);
+  assert.equal(t.branch, 1);
+  assert.equal(g.towerStats(t).key, 'pierce');
+  assert.equal(g.isMaxLevel(t), true);
+  assert.equal(g.upgradeOptions(t).length, 0, '進化後にまだ選択肢がある');
+  assert.equal(g.upgrade(t).ok, false, '進化後にさらに強化できてしまう');
+});
+
+test('進化分岐: 選んだ方の性能が実際に使われる', () => {
+  const mk = branch => {
+    const g = newGame();
+    g.gold = 99999;
+    const t = g.build(2, 2, 'archer').tower;
+    g.upgrade(t); g.upgrade(t); g.upgrade(t, branch);
+    return { g, t };
+  };
+  const rapid = mk(0), pierce = mk(1);
+  assert.ok(rapid.g.towerStats(rapid.t).rate > pierce.g.towerStats(pierce.t).rate, '連射の方が速いはず');
+  assert.ok(pierce.g.towerStats(pierce.t).dmg > rapid.g.towerStats(rapid.t).dmg, '貫通の方が重いはず');
+
+  /* 貫通を選ぶと装甲を無視できる */
+  const tank = pierce.g.spawnEnemy('tank', 1, 1);
+  const before = tank.hp;
+  pierce.g.fire(pierce.t, pierce.g.towerStats(pierce.t), tank);
+  for (let i = 0; i < 60; i++) pierce.g.update(1 / 60);
+  const dealt = before - tank.hp;
+  assert.ok(dealt >= pierce.g.towerStats(pierce.t).dmg * 0.9,
+    `貫通が装甲を無視できていない (${dealt})`);
+});
+
+test('進化分岐: 各タワーに2つずつ進化先がある', () => {
+  for (const id of C.TOWER_ORDER) {
+    const d = C.TOWERS[id];
+    assert.equal(d.levels.length, 3, `${id} のLv1-3が3段階でない`);
+    assert.equal(d.branches.length, 2, `${id} に進化先が2つない`);
+    d.branches.forEach(b => {
+      assert.ok(b.label && b.note && b.up > 0, `${id} の進化先に情報が足りない`);
+    });
+  }
+});
+
+/* ---- Wave特性 ----------------------------------------------------------- */
+
+test('Wave特性: 重装は装甲を、疾走は速度を上げる', () => {
+  const g = newGame();
+  const plain = g.spawnEnemy('normal', 1, 1, null);
+  const armored = g.spawnEnemy('normal', 1, 1, 'armored');
+  const swift = g.spawnEnemy('normal', 1, 1, 'swift');
+  assert.equal(armored.armor, plain.armor + C.AFFIXES.armored.armorAdd);
+  assert.ok(swift.baseSpeed > plain.baseSpeed * 1.3, '疾走で速くなっていない');
+  assert.equal(swift.armor, plain.armor, '疾走で装甲まで変わっている');
+});
+
+test('Wave特性: 再生はHPを回復する', () => {
+  const g = newGame();
+  const e = g.spawnEnemy('tank', 1, 1, 'regen');
+  g.damageEnemy(e, 200, true);
+  const low = e.hp;
+  advance(g, 2);
+  assert.ok(e.hp > low, '再生で回復していない');
+
+  const plain = newGame();
+  const p2 = plain.spawnEnemy('tank', 1, 1, null);
+  plain.damageEnemy(p2, 200, true);
+  const low2 = p2.hp;
+  advance(plain, 2);
+  assert.equal(p2.hp, low2, '特性なしなのに回復している');
+});
+
+test('Wave特性: 指定したWaveにだけ付いている', () => {
+  const withAffix = C.WAVES.filter(w => w.affix).length;
+  assert.ok(withAffix >= 4, 'Wave特性が少なすぎる');
+  assert.ok(withAffix <= C.WAVES.length - 5, '全部のWaveに付いていて特別感がない');
+  C.WAVES.forEach((w, i) => {
+    if (w.affix) assert.ok(C.AFFIXES[w.affix], `Wave${i + 1} の特性名が不正: ${w.affix}`);
+  });
+  assert.equal(C.WAVES[0].affix, null, '最初のWaveに特性が付いている');
+});
+
+test('Wave特性: 実際に敵へ適用される', () => {
+  const g = newGame();
+  g.wave = 7;             /* 次は Wave8 = 重装 */
+  g.startWave();
+  advance(g, 1);
+  assert.ok(g.enemies.length > 0);
+  assert.ok(g.enemies.every(e => e.affix && e.affix.key === 'armored'),
+    'Wave8の敵に重装が付いていない');
+});
+
+/* ---- アクティブスキル ---------------------------------------------------- */
+
+test('スキル: メテオは範囲内の敵にダメージを与え、クールダウンに入る', () => {
+  const g = newGame();
+  g.startWave();
+  advance(g, 2);
+  const near = g.spawnEnemy('normal', 3, 1);
+  near.dist = 3; g.updateEnemyPos(near);
+  const far = g.spawnEnemy('normal', 3, 1);
+  far.dist = 30; g.updateEnemyPos(far);
+  const nearHp = near.hp, farHp = far.hp;
+
+  assert.equal(g.abilityReady('meteor'), true);
+  const res = g.useAbility('meteor', near.x, near.y);
+  assert.equal(res.ok, true);
+  assert.ok(res.hits >= 1);
+  assert.ok(near.hp < nearHp, '範囲内の敵にダメージが入っていない');
+  assert.equal(far.hp, farHp, '範囲外の敵にまでダメージが入っている');
+
+  assert.equal(g.abilityReady('meteor'), false, 'クールダウンに入っていない');
+  assert.equal(g.useAbility('meteor', near.x, near.y).reason, 'cooldown');
+});
+
+test('スキル: メテオは装甲を無視する', () => {
+  const g = newGame();
+  const tank = g.spawnEnemy('tank', 1, 1);
+  const before = tank.hp;
+  g.useAbility('meteor', tank.x, tank.y);
+  const dealt = before - tank.hp;
+  const raw = C.ABILITIES.meteor.damage(Math.max(1, g.wave));
+  assert.ok(dealt > raw * 0.6, `装甲で減りすぎている (${dealt} / ${raw})`);
+});
+
+test('スキル: 氷結は画面上の敵をまとめて減速させる', () => {
+  const g = newGame();
+  for (let i = 0; i < 5; i++) {
+    const e = g.spawnEnemy('fast', 1, 1);
+    e.dist = 2 + i * 3;
+    g.updateEnemyPos(e);
+  }
+  const res = g.useAbility('freeze');
+  assert.equal(res.ok, true);
+  assert.equal(res.frozen, 5);
+  assert.ok(g.enemies.every(e => e.slow > 0), '全員が減速していない');
+});
+
+test('スキル: 時間が経つと再び使えるようになる', () => {
+  const g = newGame();
+  g.useAbility('freeze');
+  assert.equal(g.abilityReady('freeze'), false);
+  advance(g, C.ABILITIES.freeze.cooldown + 0.5);
+  assert.equal(g.abilityReady('freeze'), true, 'クールダウンが回復していない');
+});
+
+test('スキル: 焼夷キャノンは着弾後も燃やし続ける', () => {
+  const g = newGame();
+  g.gold = 99999;
+  const t = g.build(2, 2, 'cannon').tower;
+  g.upgrade(t); g.upgrade(t); g.upgrade(t, 1);      /* 焼夷 */
+  assert.equal(g.towerStats(t).key, 'burn');
+
+  const e = g.spawnEnemy('tank', 2, 1);
+  e.dist = 2.4; e.offset = 0; g.updateEnemyPos(e);
+  advance(g, 2);
+  assert.ok(e.burn > 0 || !e.alive, '延焼が付いていない');
+  if (e.alive) {
+    const hp = e.hp;
+    advance(g, 1);
+    assert.ok(e.hp < hp, '燃えているのにHPが減らない');
+  }
+});

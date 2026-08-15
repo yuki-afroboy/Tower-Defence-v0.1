@@ -31,6 +31,7 @@
 
   Game.prototype.reset = function () {
     var B = C.BALANCE;
+    var self = this;
     this.time = 0;
     this.gold = B.startGold;
     this.hp = B.startHp;
@@ -47,7 +48,9 @@
     this.grid = Object.create(null);
     this.nextId = 1;
     this.shake = 0;
-    this.stats = { killed: 0, leaked: 0, goldEarned: 0, spent: 0 };
+    this.stats = { killed: 0, leaked: 0, goldEarned: 0, spent: 0, abilitiesUsed: 0 };
+    this.abilities = {};
+    C.ABILITY_ORDER.forEach(function (k) { self.abilities[k] = { cd: 0 }; });
     this.events = [];              /* UI に伝えるための出来事 */
   };
 
@@ -89,6 +92,7 @@
       c: c, r: r,
       x: c + 0.5, y: r + 0.5,
       level: 0,                    /* 0 が Lv1 */
+      branch: null,                /* Lv4で選んだ進化先 */
       invested: def.cost,
       cooldown: 0,
       angle: -Math.PI / 2,
@@ -104,24 +108,50 @@
     return { ok: true, tower: t };
   };
 
+  /* Lv1..Lv3 は levels[]、Lv4 は選んだ branch の性能を使う */
   Game.prototype.towerStats = function (t) {
+    if (t.branch !== null && t.branch !== undefined) return t.def.branches[t.branch];
     return t.def.levels[t.level];
   };
 
-  Game.prototype.upgradeCost = function (t) {
-    var next = t.def.levels[t.level + 1];
-    return next ? next.up : null;
+  Game.prototype.isMaxLevel = function (t) {
+    return t.branch !== null && t.branch !== undefined;
   };
 
-  Game.prototype.upgrade = function (t) {
+  /* 次の強化の選択肢。Lv3のときは2つ返る(分岐) */
+  Game.prototype.upgradeOptions = function (t) {
+    if (this.isMaxLevel(t)) return [];
+    var next = t.def.levels[t.level + 1];
+    if (next) return [{ index: null, cost: next.up, stats: next }];
+    return t.def.branches.map(function (b, i) {
+      return { index: i, cost: b.up, stats: b, label: b.label, note: b.note };
+    });
+  };
+
+  Game.prototype.upgradeCost = function (t, branchIndex) {
+    var opts = this.upgradeOptions(t);
+    if (!opts.length) return null;
+    if (branchIndex === undefined || branchIndex === null) return opts[0].cost;
+    var found = null;
+    opts.forEach(function (o) { if (o.index === branchIndex) found = o; });
+    return found ? found.cost : null;
+  };
+
+  Game.prototype.upgrade = function (t, branchIndex) {
     if (!t || this.phase === 'victory' || this.phase === 'defeat') return { ok: false, reason: 'over' };
-    var cost = this.upgradeCost(t);
-    if (cost === null) return { ok: false, reason: 'max' };
+    var opts = this.upgradeOptions(t);
+    if (!opts.length) return { ok: false, reason: 'max' };
+    var choice = opts[0];
+    if (branchIndex !== undefined && branchIndex !== null) {
+      opts.forEach(function (o) { if (o.index === branchIndex) choice = o; });
+    }
+    var cost = choice.cost;
     if (this.gold < cost) return { ok: false, reason: 'gold' };
     this.gold -= cost;
     this.stats.spent += cost;
     t.invested += cost;
     t.level++;
+    if (choice.index !== null && choice.index !== undefined) t.branch = choice.index;
     this.spawnParticles(t.x, t.y, 18, '#ffe066', 3);
     this.addEffect({ kind: 'ring', x: t.x, y: t.y, r0: 0.2, r1: 1.3, life: 0.45, max: 0.45, color: '#ffe066' });
     this.emit('upgrade', t);
@@ -173,30 +203,36 @@
           t: base + delay + i * gap,
           type: type,
           hpMul: def.hpMul,
-          wave: waveNo
+          wave: waveNo,
+          affix: def.affix
         });
       }
     });
     this.spawnQueue.sort(function (a, b) { return a.t - b.t; });
     this.pendingWaves.push(waveNo);
     this.phase = 'wave';
-    this.emit('waveStart', { wave: waveNo, early: early });
+    this.emit('waveStart', { wave: waveNo, early: early, affix: def.affix });
     return { ok: true, early: early };
   };
 
   /* ---- 敵 ------------------------------------------------------------ */
 
-  Game.prototype.spawnEnemy = function (typeId, hpMul, waveNo) {
+  Game.prototype.spawnEnemy = function (typeId, hpMul, waveNo, affixKey) {
     var def = C.ENEMIES[typeId];
     var hp = Math.round(def.hp * hpMul);
+    var affix = affixKey ? C.AFFIXES[affixKey] : null;
     var e = {
       id: this.nextId++,
       type: typeId,
       def: def,
       hp: hp,
       maxHp: hp,
-      armor: def.armor,
-      baseSpeed: def.speed,
+      affix: affix,
+      armor: def.armor + (affix && affix.armorAdd ? affix.armorAdd : 0),
+      regenPct: affix && affix.regenPct ? affix.regenPct : 0,
+      burn: 0,
+      burnDps: 0,
+      baseSpeed: def.speed * (affix && affix.speedMul ? affix.speedMul : 1),
       dist: 0,
       x: 0, y: 0,
       offset: (this.rng() - 0.5) * 0.34,
@@ -257,6 +293,75 @@
     }
   };
 
+  /* ---- アクティブスキル ---------------------------------------------- */
+
+  Game.prototype.abilityReady = function (key) {
+    var a = this.abilities[key];
+    return !!a && a.cd <= 0;
+  };
+
+  Game.prototype.useAbility = function (key, x, y) {
+    var def = C.ABILITIES[key];
+    if (!def) return { ok: false, reason: 'type' };
+    if (this.phase !== 'wave' && this.phase !== 'ready') return { ok: false, reason: 'over' };
+    if (!this.abilityReady(key)) return { ok: false, reason: 'cooldown' };
+
+    if (key === 'meteor') {
+      if (x === undefined || y === undefined) return { ok: false, reason: 'aim' };
+      var dmg = def.damage(Math.max(1, this.wave));
+      var r2 = def.radius * def.radius;
+      var hits = 0;
+      for (var i = 0; i < this.enemies.length; i++) {
+        var e = this.enemies[i];
+        if (!e.alive) continue;
+        var d2 = dist2(x, y, e.x, e.y);
+        if (d2 <= r2) {
+          var falloff = 1 - 0.35 * (Math.sqrt(d2) / def.radius);
+          this.damageEnemy(e, dmg * falloff, true, null);
+          if (e.alive && def.slow) this.applySlow(e, def.slow, def.slowDur);
+          hits++;
+        }
+      }
+      this.addEffect({ kind: 'ring', x: x, y: y, r0: 0.2, r1: def.radius, life: 0.5, max: 0.5, color: '#ff9a3c' });
+      this.addEffect({ kind: 'ring', x: x, y: y, r0: 0.1, r1: def.radius * 1.5, life: 0.75, max: 0.75, color: '#ffd75e' });
+      this.spawnParticles(x, y, 46, '#ffb454', 5.5);
+      this.shake = Math.max(this.shake, 1.1);
+      this.abilities[key].cd = def.cooldown;
+      this.stats.abilitiesUsed++;
+      this.emit('ability', { key: key, x: x, y: y, hits: hits });
+      return { ok: true, hits: hits };
+    }
+
+    /* 氷結: 画面上の敵をまとめて減速 */
+    var frozen = 0;
+    for (var j = 0; j < this.enemies.length; j++) {
+      var en = this.enemies[j];
+      if (!en.alive) continue;
+      this.applySlow(en, def.slow, def.duration);
+      frozen++;
+    }
+    this.addEffect({
+      kind: 'ring', x: C.GRID_COLS / 2, y: C.GRID_ROWS / 2,
+      r0: 0.5, r1: C.GRID_ROWS, life: 0.6, max: 0.6, color: '#7fdcff'
+    });
+    this.addEffect({ kind: 'flash', color: 'rgba(120,220,255,0.45)', life: 0.35, max: 0.35 });
+    this.abilities[key].cd = def.cooldown;
+    this.stats.abilitiesUsed++;
+    this.emit('ability', { key: key, frozen: frozen });
+    return { ok: true, frozen: frozen };
+  };
+
+  Game.prototype.updateAbilities = function (dt) {
+    var self = this;
+    C.ABILITY_ORDER.forEach(function (k) {
+      var a = self.abilities[k];
+      if (a.cd > 0) {
+        a.cd = Math.max(0, a.cd - dt);
+        if (a.cd === 0) self.emit('abilityReady', { key: k });
+      }
+    });
+  };
+
   /* ---- エフェクト ---------------------------------------------------- */
 
   Game.prototype.addEffect = function (fx) {
@@ -295,9 +400,10 @@
     /* 出現 */
     while (this.spawnQueue.length && this.spawnQueue[0].t <= this.time) {
       var s = this.spawnQueue.shift();
-      this.spawnEnemy(s.type, s.hpMul, s.wave);
+      this.spawnEnemy(s.type, s.hpMul, s.wave, s.affix);
     }
 
+    this.updateAbilities(dt);
     this.updateEnemies(dt);
     this.updateTowers(dt);
     this.updateProjectiles(dt);
@@ -315,6 +421,18 @@
         if (e.slowTimer <= 0) { e.slow = 0; e.slowTimer = 0; }
       }
       if (e.hitFlash > 0) e.hitFlash -= dt;
+
+      /* 「再生」特性: 毎秒HPの数%を回復 */
+      if (e.regenPct > 0 && e.hp < e.maxHp) {
+        e.hp = Math.min(e.maxHp, e.hp + e.maxHp * e.regenPct * dt);
+      }
+      /* 焼夷弾の延焼ダメージ(装甲を無視) */
+      if (e.burn > 0) {
+        e.burn -= dt;
+        this.damageEnemy(e, e.burnDps * dt, true, null);
+        if (!e.alive) continue;
+      }
+
       var speed = e.baseSpeed * (1 - e.slow);
       e.dist += speed * dt;
       if (e.dist >= C.PATH_LENGTH) {
@@ -404,7 +522,7 @@
 
   Game.prototype.fire = function (t, st, target) {
     if (t.def.shot === 'beam') {
-      this.damageEnemy(target, st.dmg, !!t.def.pierce, t);
+      this.damageEnemy(target, st.dmg, !!(t.def.pierce || st.pierce), t);
       this.addEffect({
         kind: 'beam', x1: t.x, y1: t.y, x2: target.x, y2: target.y,
         life: 0.18, max: 0.18, color: '#e0c3ff'
@@ -422,7 +540,8 @@
       speed: speed,
       dmg: st.dmg,
       splash: st.splash || 0,
-      pierce: !!t.def.pierce,
+      burn: st.burn || null,
+      pierce: !!(t.def.pierce || st.pierce),
       source: t,
       color: t.def.color,
       travelled: 0,
@@ -464,6 +583,10 @@
         if (d2 <= r2) {
           var falloff = 1 - 0.4 * (Math.sqrt(d2) / p.splash);
           this.damageEnemy(e, p.dmg * falloff, p.pierce, p.source);
+          if (p.burn && e.alive) {
+            e.burn = Math.max(e.burn, p.burn.dur);
+            e.burnDps = Math.max(e.burnDps, p.burn.dps);
+          }
         }
       }
       this.addEffect({

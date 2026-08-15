@@ -115,8 +115,20 @@
       levels: [
         { dmg: 9, rate: 1.7, range: 2.5 },
         { dmg: 14, rate: 1.9, range: 2.7, up: 55 },
-        { dmg: 21, rate: 2.1, range: 2.9, up: 90 },
-        { dmg: 32, rate: 2.4, range: 3.2, up: 150 }
+        { dmg: 21, rate: 2.1, range: 2.9, up: 90 }
+      ],
+      /* Lv4は2つの進化先から選ぶ */
+      branches: [
+        {
+          key: 'rapid', label: '連射',
+          note: '手数で押す。数の多い敵に強い',
+          dmg: 26, rate: 3.4, range: 3.0, up: 150
+        },
+        {
+          key: 'pierce', label: '貫通',
+          note: '装甲を無視する。Tank対策になる',
+          dmg: 40, rate: 2.0, range: 3.4, pierce: true, up: 170
+        }
       ]
     },
     cannon: {
@@ -131,8 +143,20 @@
       levels: [
         { dmg: 26, rate: 0.6, range: 2.3, splash: 0.9 },
         { dmg: 40, rate: 0.65, range: 2.4, splash: 1.1, up: 110 },
-        { dmg: 60, rate: 0.7, range: 2.5, splash: 1.2, up: 180 },
-        { dmg: 92, rate: 0.78, range: 2.8, splash: 1.4, up: 300 }
+        { dmg: 60, rate: 0.7, range: 2.5, splash: 1.2, up: 180 }
+      ],
+      branches: [
+        {
+          key: 'heavy', label: '重砲',
+          note: '一撃が重く、爆発範囲も広い',
+          dmg: 100, rate: 0.75, range: 2.9, splash: 1.5, up: 300
+        },
+        {
+          key: 'burn', label: '焼夷',
+          note: '着弾後も燃え続ける。装甲を無視して削る',
+          dmg: 62, rate: 0.85, range: 2.8, splash: 1.6,
+          burn: { dps: 26, dur: 3 }, up: 300
+        }
       ]
     },
     ice: {
@@ -147,26 +171,48 @@
       levels: [
         { dmg: 4, rate: 0.9, range: 2.2, slow: 0.30, slowDur: 1.6 },
         { dmg: 6, rate: 1.0, range: 2.4, slow: 0.38, slowDur: 1.8, up: 80 },
-        { dmg: 9, rate: 1.1, range: 2.6, slow: 0.46, slowDur: 2.0, up: 130 },
-        { dmg: 14, rate: 1.2, range: 2.9, slow: 0.55, slowDur: 2.4, up: 210 }
+        { dmg: 9, rate: 1.1, range: 2.6, slow: 0.46, slowDur: 2.0, up: 130 }
+      ],
+      branches: [
+        {
+          key: 'zero', label: '絶対零度',
+          note: '減速をさらに強化。足止め特化',
+          dmg: 16, rate: 1.2, range: 2.9, slow: 0.68, slowDur: 2.6, up: 210
+        },
+        {
+          key: 'blizzard', label: '氷嵐',
+          note: '減速は控えめだが、広範囲に大ダメージ',
+          dmg: 30, rate: 1.3, range: 3.3, slow: 0.40, slowDur: 2.0, up: 230
+        }
       ]
     },
     sniper: {
       id: 'sniper',
       name: 'Sniper',
       nameJa: 'スナイパー',
-      desc: '長射程・単体高火力・装甲無視。ただし近すぎる敵は撃てない。',
+      desc: '長射程・単体高火力・装甲無視。足元(2.1マス以内)は撃てないので置き場所が重要。',
       color: '#c792ff',
       dark: '#6a3fa0',
       shot: 'beam',
       cost: 220,
       pierce: true,
-      minRange: 1.5,
+      minRange: 2.1,
       levels: [
         { dmg: 70, rate: 0.35, range: 3.6 },
         { dmg: 110, rate: 0.38, range: 4.0, up: 200 },
-        { dmg: 175, rate: 0.42, range: 4.4, up: 340 },
-        { dmg: 265, rate: 0.45, range: 4.9, up: 580 }
+        { dmg: 175, rate: 0.42, range: 4.4, up: 340 }
+      ],
+      branches: [
+        {
+          key: 'deadeye', label: '必中',
+          note: '一撃特化。ボスに最も効く',
+          dmg: 280, rate: 0.44, range: 4.9, up: 580
+        },
+        {
+          key: 'burst', label: '速射',
+          note: '一撃は落ちるが手数が3倍近い',
+          dmg: 150, rate: 0.95, range: 4.4, up: 600
+        }
       ]
     }
   };
@@ -198,26 +244,72 @@
     }
   };
 
+  /* ---- Wave特性 ------------------------------------------------------
+     一部のWaveに付く「特殊条件」。同じ敵でも戦い方を変える必要が出ます。 */
+  var AFFIXES = {
+    armored: {
+      key: 'armored', name: '重装', icon: '🛡',
+      desc: '敵の装甲+6。装甲無視の攻撃が有効', short: '装甲+6',
+      color: '#9fb4d8', armorAdd: 6
+    },
+    swift: {
+      key: 'swift', name: '疾走', icon: '💨',
+      desc: '敵の移動速度+35%。減速が重要', short: '速度+35%',
+      color: '#ffe066', speedMul: 1.35
+    },
+    regen: {
+      key: 'regen', name: '再生', icon: '✚',
+      desc: '敵が毎秒HPの2%を回復。一気に削る必要あり', short: 'HP自動回復',
+      color: '#7dff9f', regenPct: 0.02
+    }
+  };
+
   /* ---- Wave ---------------------------------------------------------- */
   /* groups: [敵タイプ, 数, 出現間隔(秒), 開始までの遅延(秒)] */
-  function W(hpMul, groups) { return { hpMul: hpMul, groups: groups }; }
+  function W(hpMul, groups, affix) {
+    return { hpMul: hpMul, groups: groups, affix: affix || null };
+  }
   var WAVES = [
     /*  1 */ W(1.00, [['normal', 6, 1.2, 0]]),
     /*  2 */ W(1.20, [['normal', 9, 1.0, 0]]),
     /*  3 */ W(1.45, [['normal', 12, 0.85, 0]]),
     /*  4 */ W(1.70, [['fast', 8, 0.7, 0], ['normal', 6, 1.0, 5]]),
-    /*  5 */ W(1.95, [['normal', 10, 0.8, 0], ['fast', 8, 0.55, 6]]),
+    /*  5 */ W(1.95, [['normal', 10, 0.8, 0], ['fast', 8, 0.55, 6]], 'swift'),
     /*  6 */ W(2.20, [['fast', 16, 0.45, 0], ['normal', 6, 1.0, 4]]),
     /*  7 */ W(2.50, [['tank', 2, 3.0, 0], ['normal', 10, 0.8, 2]]),
-    /*  8 */ W(2.85, [['tank', 3, 2.6, 0], ['fast', 12, 0.5, 3]]),
+    /*  8 */ W(2.85, [['tank', 3, 2.6, 0], ['fast', 12, 0.5, 3]], 'armored'),
     /*  9 */ W(3.25, [['tank', 4, 2.4, 0], ['normal', 14, 0.7, 2]]),
-    /* 10 */ W(4.00, [['swarm', 30, 0.26, 0], ['normal', 8, 0.9, 8]]),
+    /* 10 */ W(4.00, [['swarm', 30, 0.26, 0], ['normal', 8, 0.9, 8]], 'regen'),
     /* 11 */ W(4.70, [['swarm', 26, 0.28, 0], ['fast', 14, 0.42, 5]]),
-    /* 12 */ W(5.40, [['tank', 4, 2.2, 0], ['swarm', 30, 0.26, 3]]),
-    /* 13 */ W(6.30, [['tank', 5, 2.0, 0], ['fast', 16, 0.4, 2], ['normal', 14, 0.6, 8]]),
-    /* 14 */ W(7.40, [['tank', 6, 1.9, 0], ['swarm', 34, 0.24, 2], ['fast', 14, 0.42, 10]]),
+    /* 12 */ W(5.40, [['tank', 4, 2.2, 0], ['swarm', 30, 0.26, 3]], 'swift'),
+    /* 13 */ W(6.30, [['tank', 5, 2.0, 0], ['fast', 16, 0.4, 2], ['normal', 14, 0.6, 8]], 'armored'),
+    /* 14 */ W(7.40, [['tank', 6, 1.9, 0], ['swarm', 34, 0.24, 2], ['fast', 14, 0.42, 10]], 'regen'),
     /* 15 */ W(8.00, [['boss', 1, 1, 0], ['tank', 4, 2.4, 6], ['swarm', 26, 0.28, 12]])
   ];
+
+  /* ---- アクティブスキル ----------------------------------------------
+     ゴールドを使わず、時間で回復する必殺技。Wave中に自分で撃ちます。 */
+  var ABILITIES = {
+    meteor: {
+      key: 'meteor', name: 'メテオ', icon: '☄',
+      desc: '狙った場所に隕石。装甲を無視した大ダメージ',
+      cooldown: 30,
+      radius: 1.35,
+      aimed: true,
+      slow: 0.4,
+      slowDur: 1.5,
+      damage: function (wave) { return 100 + wave * 25; }
+    },
+    freeze: {
+      key: 'freeze', name: '氷結', icon: '❄',
+      desc: '画面上のすべての敵を一時停止レベルまで減速',
+      cooldown: 36,
+      aimed: false,
+      slow: 0.65,
+      duration: 2.5
+    }
+  };
+  var ABILITY_ORDER = ['meteor', 'freeze'];
 
   var BALANCE = {
     startGold: 250,
@@ -244,6 +336,9 @@
     isBuildable: isBuildable,
     TOWERS: TOWERS,
     TOWER_ORDER: TOWER_ORDER,
+    AFFIXES: AFFIXES,
+    ABILITIES: ABILITIES,
+    ABILITY_ORDER: ABILITY_ORDER,
     ENEMIES: ENEMIES,
     WAVES: WAVES,
     BALANCE: BALANCE,

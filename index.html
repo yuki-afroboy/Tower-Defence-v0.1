@@ -35,11 +35,14 @@
   <main id="stage">
     <canvas id="game" width="360" height="520"></canvas>
     <div id="boss-hp" hidden><span>BOSS</span><i></i></div>
+    <div id="affix-badge" hidden></div>
     <div id="toast" aria-live="polite"></div>
     <div id="wave-banner"></div>
   </main>
 
   <footer id="dock">
+    <div id="abilities"></div>
+
     <div id="wave-row">
       <div id="wave-preview">次のWave: -</div>
       <button id="btn-wave" class="primary">WAVE 1 を開始</button>
@@ -58,6 +61,7 @@
         <button id="btn-close-panel" class="ghost" aria-label="閉じる">✕</button>
       </div>
       <div id="tp-stats"></div>
+      <div id="tp-branches" hidden></div>
       <div class="tp-actions">
         <button id="btn-upgrade" class="primary">強化 <span id="up-cost">55</span></button>
         <button id="btn-sell" class="danger">売却 <span id="sell-val">36</span></button>

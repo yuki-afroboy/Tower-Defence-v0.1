@@ -225,6 +225,83 @@ canvas#game {
   padding: 8px 10px 10px;
 }
 
+/* ---- アクティブスキル ------------------------------------------------ */
+#abilities {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.ab-btn {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 6px 8px;
+  overflow: hidden;
+  border: 2px solid #4a3a6a;
+  background: linear-gradient(180deg, #3a2b56, #2a2040);
+  color: #fff;
+}
+.ab-btn .ico { font-size: 17px; line-height: 1; }
+.ab-btn .nm { font-size: 13px; font-weight: 800; }
+.ab-btn .sec { font-size: 12px; font-weight: 800; color: var(--muted); }
+.ab-btn .cd {
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  background: rgba(0, 0, 0, .62);
+  pointer-events: none;
+}
+.ab-btn.ready {
+  border-color: #ffd75e;
+  background: linear-gradient(180deg, #6b4bb0, #4a3183);
+  box-shadow: 0 0 10px rgba(255, 215, 94, .28);
+}
+.ab-btn.aiming { border-color: var(--accent); background: #16344a; }
+.ab-btn:disabled { opacity: 1; }
+
+/* ---- Wave特性のバッジ ------------------------------------------------ */
+#affix-badge {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  max-width: 68%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: rgba(10, 14, 20, .9);
+  border: 1px solid currentColor;
+  font-size: 11.5px;
+  font-weight: 800;
+  pointer-events: none;
+  z-index: 14;
+}
+#affix-badge[hidden] { display: none; }
+#boss-hp:not([hidden]) ~ #affix-badge { top: 32px; }
+
+/* ---- Lv4の進化分岐 --------------------------------------------------- */
+#tp-branches { display: grid; gap: 6px; margin-bottom: 8px; }
+#tp-branches[hidden] { display: none; }
+.br-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  text-align: left;
+  min-height: 46px;
+  padding: 8px 10px;
+  background: #1d2b3f;
+  border: 2px solid var(--accent);
+}
+.br-btn .bl { font-size: 14px; font-weight: 900; white-space: nowrap; }
+.br-btn .bn { font-size: 11px; color: var(--muted); font-weight: 600; line-height: 1.3; }
+.br-btn .bc { margin-left: auto; font-size: 13px; font-weight: 900; color: var(--gold); }
+.br-btn:disabled { opacity: .45; border-color: var(--line); }
+
 #wave-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
 #wave-preview {
   flex: 1 1 auto;
@@ -411,11 +488,14 @@ canvas#game {
   <main id="stage">
     <canvas id="game" width="360" height="520"></canvas>
     <div id="boss-hp" hidden><span>BOSS</span><i></i></div>
+    <div id="affix-badge" hidden></div>
     <div id="toast" aria-live="polite"></div>
     <div id="wave-banner"></div>
   </main>
 
   <footer id="dock">
+    <div id="abilities"></div>
+
     <div id="wave-row">
       <div id="wave-preview">次のWave: -</div>
       <button id="btn-wave" class="primary">WAVE 1 を開始</button>
@@ -434,6 +514,7 @@ canvas#game {
         <button id="btn-close-panel" class="ghost" aria-label="閉じる">✕</button>
       </div>
       <div id="tp-stats"></div>
+      <div id="tp-branches" hidden></div>
       <div class="tp-actions">
         <button id="btn-upgrade" class="primary">強化 <span id="up-cost">55</span></button>
         <button id="btn-sell" class="danger">売却 <span id="sell-val">36</span></button>
@@ -571,8 +652,20 @@ canvas#game {
       levels: [
         { dmg: 9, rate: 1.7, range: 2.5 },
         { dmg: 14, rate: 1.9, range: 2.7, up: 55 },
-        { dmg: 21, rate: 2.1, range: 2.9, up: 90 },
-        { dmg: 32, rate: 2.4, range: 3.2, up: 150 }
+        { dmg: 21, rate: 2.1, range: 2.9, up: 90 }
+      ],
+      /* Lv4は2つの進化先から選ぶ */
+      branches: [
+        {
+          key: 'rapid', label: '連射',
+          note: '手数で押す。数の多い敵に強い',
+          dmg: 26, rate: 3.4, range: 3.0, up: 150
+        },
+        {
+          key: 'pierce', label: '貫通',
+          note: '装甲を無視する。Tank対策になる',
+          dmg: 40, rate: 2.0, range: 3.4, pierce: true, up: 170
+        }
       ]
     },
     cannon: {
@@ -587,8 +680,20 @@ canvas#game {
       levels: [
         { dmg: 26, rate: 0.6, range: 2.3, splash: 0.9 },
         { dmg: 40, rate: 0.65, range: 2.4, splash: 1.1, up: 110 },
-        { dmg: 60, rate: 0.7, range: 2.5, splash: 1.2, up: 180 },
-        { dmg: 92, rate: 0.78, range: 2.8, splash: 1.4, up: 300 }
+        { dmg: 60, rate: 0.7, range: 2.5, splash: 1.2, up: 180 }
+      ],
+      branches: [
+        {
+          key: 'heavy', label: '重砲',
+          note: '一撃が重く、爆発範囲も広い',
+          dmg: 100, rate: 0.75, range: 2.9, splash: 1.5, up: 300
+        },
+        {
+          key: 'burn', label: '焼夷',
+          note: '着弾後も燃え続ける。装甲を無視して削る',
+          dmg: 62, rate: 0.85, range: 2.8, splash: 1.6,
+          burn: { dps: 26, dur: 3 }, up: 300
+        }
       ]
     },
     ice: {
@@ -603,26 +708,48 @@ canvas#game {
       levels: [
         { dmg: 4, rate: 0.9, range: 2.2, slow: 0.30, slowDur: 1.6 },
         { dmg: 6, rate: 1.0, range: 2.4, slow: 0.38, slowDur: 1.8, up: 80 },
-        { dmg: 9, rate: 1.1, range: 2.6, slow: 0.46, slowDur: 2.0, up: 130 },
-        { dmg: 14, rate: 1.2, range: 2.9, slow: 0.55, slowDur: 2.4, up: 210 }
+        { dmg: 9, rate: 1.1, range: 2.6, slow: 0.46, slowDur: 2.0, up: 130 }
+      ],
+      branches: [
+        {
+          key: 'zero', label: '絶対零度',
+          note: '減速をさらに強化。足止め特化',
+          dmg: 16, rate: 1.2, range: 2.9, slow: 0.68, slowDur: 2.6, up: 210
+        },
+        {
+          key: 'blizzard', label: '氷嵐',
+          note: '減速は控えめだが、広範囲に大ダメージ',
+          dmg: 30, rate: 1.3, range: 3.3, slow: 0.40, slowDur: 2.0, up: 230
+        }
       ]
     },
     sniper: {
       id: 'sniper',
       name: 'Sniper',
       nameJa: 'スナイパー',
-      desc: '長射程・単体高火力・装甲無視。ただし近すぎる敵は撃てない。',
+      desc: '長射程・単体高火力・装甲無視。足元(2.1マス以内)は撃てないので置き場所が重要。',
       color: '#c792ff',
       dark: '#6a3fa0',
       shot: 'beam',
       cost: 220,
       pierce: true,
-      minRange: 1.5,
+      minRange: 2.1,
       levels: [
         { dmg: 70, rate: 0.35, range: 3.6 },
         { dmg: 110, rate: 0.38, range: 4.0, up: 200 },
-        { dmg: 175, rate: 0.42, range: 4.4, up: 340 },
-        { dmg: 265, rate: 0.45, range: 4.9, up: 580 }
+        { dmg: 175, rate: 0.42, range: 4.4, up: 340 }
+      ],
+      branches: [
+        {
+          key: 'deadeye', label: '必中',
+          note: '一撃特化。ボスに最も効く',
+          dmg: 280, rate: 0.44, range: 4.9, up: 580
+        },
+        {
+          key: 'burst', label: '速射',
+          note: '一撃は落ちるが手数が3倍近い',
+          dmg: 150, rate: 0.95, range: 4.4, up: 600
+        }
       ]
     }
   };
@@ -654,26 +781,72 @@ canvas#game {
     }
   };
 
+  /* ---- Wave特性 ------------------------------------------------------
+     一部のWaveに付く「特殊条件」。同じ敵でも戦い方を変える必要が出ます。 */
+  var AFFIXES = {
+    armored: {
+      key: 'armored', name: '重装', icon: '🛡',
+      desc: '敵の装甲+6。装甲無視の攻撃が有効', short: '装甲+6',
+      color: '#9fb4d8', armorAdd: 6
+    },
+    swift: {
+      key: 'swift', name: '疾走', icon: '💨',
+      desc: '敵の移動速度+35%。減速が重要', short: '速度+35%',
+      color: '#ffe066', speedMul: 1.35
+    },
+    regen: {
+      key: 'regen', name: '再生', icon: '✚',
+      desc: '敵が毎秒HPの2%を回復。一気に削る必要あり', short: 'HP自動回復',
+      color: '#7dff9f', regenPct: 0.02
+    }
+  };
+
   /* ---- Wave ---------------------------------------------------------- */
   /* groups: [敵タイプ, 数, 出現間隔(秒), 開始までの遅延(秒)] */
-  function W(hpMul, groups) { return { hpMul: hpMul, groups: groups }; }
+  function W(hpMul, groups, affix) {
+    return { hpMul: hpMul, groups: groups, affix: affix || null };
+  }
   var WAVES = [
     /*  1 */ W(1.00, [['normal', 6, 1.2, 0]]),
     /*  2 */ W(1.20, [['normal', 9, 1.0, 0]]),
     /*  3 */ W(1.45, [['normal', 12, 0.85, 0]]),
     /*  4 */ W(1.70, [['fast', 8, 0.7, 0], ['normal', 6, 1.0, 5]]),
-    /*  5 */ W(1.95, [['normal', 10, 0.8, 0], ['fast', 8, 0.55, 6]]),
+    /*  5 */ W(1.95, [['normal', 10, 0.8, 0], ['fast', 8, 0.55, 6]], 'swift'),
     /*  6 */ W(2.20, [['fast', 16, 0.45, 0], ['normal', 6, 1.0, 4]]),
     /*  7 */ W(2.50, [['tank', 2, 3.0, 0], ['normal', 10, 0.8, 2]]),
-    /*  8 */ W(2.85, [['tank', 3, 2.6, 0], ['fast', 12, 0.5, 3]]),
+    /*  8 */ W(2.85, [['tank', 3, 2.6, 0], ['fast', 12, 0.5, 3]], 'armored'),
     /*  9 */ W(3.25, [['tank', 4, 2.4, 0], ['normal', 14, 0.7, 2]]),
-    /* 10 */ W(4.00, [['swarm', 30, 0.26, 0], ['normal', 8, 0.9, 8]]),
+    /* 10 */ W(4.00, [['swarm', 30, 0.26, 0], ['normal', 8, 0.9, 8]], 'regen'),
     /* 11 */ W(4.70, [['swarm', 26, 0.28, 0], ['fast', 14, 0.42, 5]]),
-    /* 12 */ W(5.40, [['tank', 4, 2.2, 0], ['swarm', 30, 0.26, 3]]),
-    /* 13 */ W(6.30, [['tank', 5, 2.0, 0], ['fast', 16, 0.4, 2], ['normal', 14, 0.6, 8]]),
-    /* 14 */ W(7.40, [['tank', 6, 1.9, 0], ['swarm', 34, 0.24, 2], ['fast', 14, 0.42, 10]]),
+    /* 12 */ W(5.40, [['tank', 4, 2.2, 0], ['swarm', 30, 0.26, 3]], 'swift'),
+    /* 13 */ W(6.30, [['tank', 5, 2.0, 0], ['fast', 16, 0.4, 2], ['normal', 14, 0.6, 8]], 'armored'),
+    /* 14 */ W(7.40, [['tank', 6, 1.9, 0], ['swarm', 34, 0.24, 2], ['fast', 14, 0.42, 10]], 'regen'),
     /* 15 */ W(8.00, [['boss', 1, 1, 0], ['tank', 4, 2.4, 6], ['swarm', 26, 0.28, 12]])
   ];
+
+  /* ---- アクティブスキル ----------------------------------------------
+     ゴールドを使わず、時間で回復する必殺技。Wave中に自分で撃ちます。 */
+  var ABILITIES = {
+    meteor: {
+      key: 'meteor', name: 'メテオ', icon: '☄',
+      desc: '狙った場所に隕石。装甲を無視した大ダメージ',
+      cooldown: 30,
+      radius: 1.35,
+      aimed: true,
+      slow: 0.4,
+      slowDur: 1.5,
+      damage: function (wave) { return 100 + wave * 25; }
+    },
+    freeze: {
+      key: 'freeze', name: '氷結', icon: '❄',
+      desc: '画面上のすべての敵を一時停止レベルまで減速',
+      cooldown: 36,
+      aimed: false,
+      slow: 0.65,
+      duration: 2.5
+    }
+  };
+  var ABILITY_ORDER = ['meteor', 'freeze'];
 
   var BALANCE = {
     startGold: 250,
@@ -700,6 +873,9 @@ canvas#game {
     isBuildable: isBuildable,
     TOWERS: TOWERS,
     TOWER_ORDER: TOWER_ORDER,
+    AFFIXES: AFFIXES,
+    ABILITIES: ABILITIES,
+    ABILITY_ORDER: ABILITY_ORDER,
     ENEMIES: ENEMIES,
     WAVES: WAVES,
     BALANCE: BALANCE,
@@ -742,6 +918,7 @@ canvas#game {
 
   Game.prototype.reset = function () {
     var B = C.BALANCE;
+    var self = this;
     this.time = 0;
     this.gold = B.startGold;
     this.hp = B.startHp;
@@ -758,7 +935,9 @@ canvas#game {
     this.grid = Object.create(null);
     this.nextId = 1;
     this.shake = 0;
-    this.stats = { killed: 0, leaked: 0, goldEarned: 0, spent: 0 };
+    this.stats = { killed: 0, leaked: 0, goldEarned: 0, spent: 0, abilitiesUsed: 0 };
+    this.abilities = {};
+    C.ABILITY_ORDER.forEach(function (k) { self.abilities[k] = { cd: 0 }; });
     this.events = [];              /* UI に伝えるための出来事 */
   };
 
@@ -800,6 +979,7 @@ canvas#game {
       c: c, r: r,
       x: c + 0.5, y: r + 0.5,
       level: 0,                    /* 0 が Lv1 */
+      branch: null,                /* Lv4で選んだ進化先 */
       invested: def.cost,
       cooldown: 0,
       angle: -Math.PI / 2,
@@ -815,24 +995,50 @@ canvas#game {
     return { ok: true, tower: t };
   };
 
+  /* Lv1..Lv3 は levels[]、Lv4 は選んだ branch の性能を使う */
   Game.prototype.towerStats = function (t) {
+    if (t.branch !== null && t.branch !== undefined) return t.def.branches[t.branch];
     return t.def.levels[t.level];
   };
 
-  Game.prototype.upgradeCost = function (t) {
-    var next = t.def.levels[t.level + 1];
-    return next ? next.up : null;
+  Game.prototype.isMaxLevel = function (t) {
+    return t.branch !== null && t.branch !== undefined;
   };
 
-  Game.prototype.upgrade = function (t) {
+  /* 次の強化の選択肢。Lv3のときは2つ返る(分岐) */
+  Game.prototype.upgradeOptions = function (t) {
+    if (this.isMaxLevel(t)) return [];
+    var next = t.def.levels[t.level + 1];
+    if (next) return [{ index: null, cost: next.up, stats: next }];
+    return t.def.branches.map(function (b, i) {
+      return { index: i, cost: b.up, stats: b, label: b.label, note: b.note };
+    });
+  };
+
+  Game.prototype.upgradeCost = function (t, branchIndex) {
+    var opts = this.upgradeOptions(t);
+    if (!opts.length) return null;
+    if (branchIndex === undefined || branchIndex === null) return opts[0].cost;
+    var found = null;
+    opts.forEach(function (o) { if (o.index === branchIndex) found = o; });
+    return found ? found.cost : null;
+  };
+
+  Game.prototype.upgrade = function (t, branchIndex) {
     if (!t || this.phase === 'victory' || this.phase === 'defeat') return { ok: false, reason: 'over' };
-    var cost = this.upgradeCost(t);
-    if (cost === null) return { ok: false, reason: 'max' };
+    var opts = this.upgradeOptions(t);
+    if (!opts.length) return { ok: false, reason: 'max' };
+    var choice = opts[0];
+    if (branchIndex !== undefined && branchIndex !== null) {
+      opts.forEach(function (o) { if (o.index === branchIndex) choice = o; });
+    }
+    var cost = choice.cost;
     if (this.gold < cost) return { ok: false, reason: 'gold' };
     this.gold -= cost;
     this.stats.spent += cost;
     t.invested += cost;
     t.level++;
+    if (choice.index !== null && choice.index !== undefined) t.branch = choice.index;
     this.spawnParticles(t.x, t.y, 18, '#ffe066', 3);
     this.addEffect({ kind: 'ring', x: t.x, y: t.y, r0: 0.2, r1: 1.3, life: 0.45, max: 0.45, color: '#ffe066' });
     this.emit('upgrade', t);
@@ -884,30 +1090,36 @@ canvas#game {
           t: base + delay + i * gap,
           type: type,
           hpMul: def.hpMul,
-          wave: waveNo
+          wave: waveNo,
+          affix: def.affix
         });
       }
     });
     this.spawnQueue.sort(function (a, b) { return a.t - b.t; });
     this.pendingWaves.push(waveNo);
     this.phase = 'wave';
-    this.emit('waveStart', { wave: waveNo, early: early });
+    this.emit('waveStart', { wave: waveNo, early: early, affix: def.affix });
     return { ok: true, early: early };
   };
 
   /* ---- 敵 ------------------------------------------------------------ */
 
-  Game.prototype.spawnEnemy = function (typeId, hpMul, waveNo) {
+  Game.prototype.spawnEnemy = function (typeId, hpMul, waveNo, affixKey) {
     var def = C.ENEMIES[typeId];
     var hp = Math.round(def.hp * hpMul);
+    var affix = affixKey ? C.AFFIXES[affixKey] : null;
     var e = {
       id: this.nextId++,
       type: typeId,
       def: def,
       hp: hp,
       maxHp: hp,
-      armor: def.armor,
-      baseSpeed: def.speed,
+      affix: affix,
+      armor: def.armor + (affix && affix.armorAdd ? affix.armorAdd : 0),
+      regenPct: affix && affix.regenPct ? affix.regenPct : 0,
+      burn: 0,
+      burnDps: 0,
+      baseSpeed: def.speed * (affix && affix.speedMul ? affix.speedMul : 1),
       dist: 0,
       x: 0, y: 0,
       offset: (this.rng() - 0.5) * 0.34,
@@ -968,6 +1180,75 @@ canvas#game {
     }
   };
 
+  /* ---- アクティブスキル ---------------------------------------------- */
+
+  Game.prototype.abilityReady = function (key) {
+    var a = this.abilities[key];
+    return !!a && a.cd <= 0;
+  };
+
+  Game.prototype.useAbility = function (key, x, y) {
+    var def = C.ABILITIES[key];
+    if (!def) return { ok: false, reason: 'type' };
+    if (this.phase !== 'wave' && this.phase !== 'ready') return { ok: false, reason: 'over' };
+    if (!this.abilityReady(key)) return { ok: false, reason: 'cooldown' };
+
+    if (key === 'meteor') {
+      if (x === undefined || y === undefined) return { ok: false, reason: 'aim' };
+      var dmg = def.damage(Math.max(1, this.wave));
+      var r2 = def.radius * def.radius;
+      var hits = 0;
+      for (var i = 0; i < this.enemies.length; i++) {
+        var e = this.enemies[i];
+        if (!e.alive) continue;
+        var d2 = dist2(x, y, e.x, e.y);
+        if (d2 <= r2) {
+          var falloff = 1 - 0.35 * (Math.sqrt(d2) / def.radius);
+          this.damageEnemy(e, dmg * falloff, true, null);
+          if (e.alive && def.slow) this.applySlow(e, def.slow, def.slowDur);
+          hits++;
+        }
+      }
+      this.addEffect({ kind: 'ring', x: x, y: y, r0: 0.2, r1: def.radius, life: 0.5, max: 0.5, color: '#ff9a3c' });
+      this.addEffect({ kind: 'ring', x: x, y: y, r0: 0.1, r1: def.radius * 1.5, life: 0.75, max: 0.75, color: '#ffd75e' });
+      this.spawnParticles(x, y, 46, '#ffb454', 5.5);
+      this.shake = Math.max(this.shake, 1.1);
+      this.abilities[key].cd = def.cooldown;
+      this.stats.abilitiesUsed++;
+      this.emit('ability', { key: key, x: x, y: y, hits: hits });
+      return { ok: true, hits: hits };
+    }
+
+    /* 氷結: 画面上の敵をまとめて減速 */
+    var frozen = 0;
+    for (var j = 0; j < this.enemies.length; j++) {
+      var en = this.enemies[j];
+      if (!en.alive) continue;
+      this.applySlow(en, def.slow, def.duration);
+      frozen++;
+    }
+    this.addEffect({
+      kind: 'ring', x: C.GRID_COLS / 2, y: C.GRID_ROWS / 2,
+      r0: 0.5, r1: C.GRID_ROWS, life: 0.6, max: 0.6, color: '#7fdcff'
+    });
+    this.addEffect({ kind: 'flash', color: 'rgba(120,220,255,0.45)', life: 0.35, max: 0.35 });
+    this.abilities[key].cd = def.cooldown;
+    this.stats.abilitiesUsed++;
+    this.emit('ability', { key: key, frozen: frozen });
+    return { ok: true, frozen: frozen };
+  };
+
+  Game.prototype.updateAbilities = function (dt) {
+    var self = this;
+    C.ABILITY_ORDER.forEach(function (k) {
+      var a = self.abilities[k];
+      if (a.cd > 0) {
+        a.cd = Math.max(0, a.cd - dt);
+        if (a.cd === 0) self.emit('abilityReady', { key: k });
+      }
+    });
+  };
+
   /* ---- エフェクト ---------------------------------------------------- */
 
   Game.prototype.addEffect = function (fx) {
@@ -1006,9 +1287,10 @@ canvas#game {
     /* 出現 */
     while (this.spawnQueue.length && this.spawnQueue[0].t <= this.time) {
       var s = this.spawnQueue.shift();
-      this.spawnEnemy(s.type, s.hpMul, s.wave);
+      this.spawnEnemy(s.type, s.hpMul, s.wave, s.affix);
     }
 
+    this.updateAbilities(dt);
     this.updateEnemies(dt);
     this.updateTowers(dt);
     this.updateProjectiles(dt);
@@ -1026,6 +1308,18 @@ canvas#game {
         if (e.slowTimer <= 0) { e.slow = 0; e.slowTimer = 0; }
       }
       if (e.hitFlash > 0) e.hitFlash -= dt;
+
+      /* 「再生」特性: 毎秒HPの数%を回復 */
+      if (e.regenPct > 0 && e.hp < e.maxHp) {
+        e.hp = Math.min(e.maxHp, e.hp + e.maxHp * e.regenPct * dt);
+      }
+      /* 焼夷弾の延焼ダメージ(装甲を無視) */
+      if (e.burn > 0) {
+        e.burn -= dt;
+        this.damageEnemy(e, e.burnDps * dt, true, null);
+        if (!e.alive) continue;
+      }
+
       var speed = e.baseSpeed * (1 - e.slow);
       e.dist += speed * dt;
       if (e.dist >= C.PATH_LENGTH) {
@@ -1115,7 +1409,7 @@ canvas#game {
 
   Game.prototype.fire = function (t, st, target) {
     if (t.def.shot === 'beam') {
-      this.damageEnemy(target, st.dmg, !!t.def.pierce, t);
+      this.damageEnemy(target, st.dmg, !!(t.def.pierce || st.pierce), t);
       this.addEffect({
         kind: 'beam', x1: t.x, y1: t.y, x2: target.x, y2: target.y,
         life: 0.18, max: 0.18, color: '#e0c3ff'
@@ -1133,7 +1427,8 @@ canvas#game {
       speed: speed,
       dmg: st.dmg,
       splash: st.splash || 0,
-      pierce: !!t.def.pierce,
+      burn: st.burn || null,
+      pierce: !!(t.def.pierce || st.pierce),
       source: t,
       color: t.def.color,
       travelled: 0,
@@ -1175,6 +1470,10 @@ canvas#game {
         if (d2 <= r2) {
           var falloff = 1 - 0.4 * (Math.sqrt(d2) / p.splash);
           this.damageEnemy(e, p.dmg * falloff, p.pierce, p.source);
+          if (p.burn && e.alive) {
+            e.burn = Math.max(e.burn, p.burn.dur);
+            e.burnDps = Math.max(e.burnDps, p.burn.dps);
+          }
         }
       }
       this.addEffect({
@@ -1275,6 +1574,7 @@ canvas#game {
     this.dpr = 1;
     this.t = 0;
     this.buildType = null;    /* 建設モードで選んでいるタワー種別 */
+    this.aimAbility = null;   /* 照準中のアクティブスキル */
     this.selected = null;     /* 選択中のタワー */
     this.hoverCell = null;
   }
@@ -1322,6 +1622,7 @@ canvas#game {
     this.drawRocks(ctx, cell);
     this.drawBase(ctx, cell, game);
     this.drawBuildHints(ctx, cell, game);
+    this.drawAbilityAim(ctx, cell);
     this.drawRangePreview(ctx, cell, game);
     this.drawTowers(ctx, cell, game);
     this.drawEnemies(ctx, cell, game);
@@ -1492,6 +1793,32 @@ canvas#game {
     }
   };
 
+  /* メテオの落下地点プレビュー */
+  Renderer.prototype.drawAbilityAim = function (ctx, cell) {
+    var def = this.aimAbility;
+    var h = this.hoverCell;
+    if (!def || !def.aimed || !h) return;
+    var cx = h.x * cell, cy = h.y * cell;
+    var pulse = 1 + Math.sin(this.t * 9) * 0.05;
+    ctx.save();
+    ctx.fillStyle = 'rgba(255,140,60,0.18)';
+    ctx.beginPath();
+    ctx.arc(cx, cy, def.radius * cell * pulse, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#ff9a3c';
+    ctx.lineWidth = 3;
+    ctx.setLineDash([6, 5]);
+    ctx.beginPath();
+    ctx.arc(cx, cy, def.radius * cell * pulse, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.beginPath();
+    ctx.moveTo(cx - cell * 0.3, cy); ctx.lineTo(cx + cell * 0.3, cy);
+    ctx.moveTo(cx, cy - cell * 0.3); ctx.lineTo(cx, cy + cell * 0.3);
+    ctx.stroke();
+    ctx.restore();
+  };
+
   Renderer.prototype.drawRangePreview = function (ctx, cell, game) {
     var t = this.selected;
     if (!t || game.towers.indexOf(t) < 0) return;
@@ -1522,11 +1849,11 @@ canvas#game {
   Renderer.prototype.drawTowers = function (ctx, cell, game) {
     for (var i = 0; i < game.towers.length; i++) {
       var t = game.towers[i];
-      this.drawTowerShape(ctx, cell, t.def, t.level, t.x * cell, t.y * cell, t.angle, t.recoil);
+      this.drawTowerShape(ctx, cell, t.def, t.level, t.x * cell, t.y * cell, t.angle, t.recoil, t.branch);
     }
   };
 
-  Renderer.prototype.drawTowerShape = function (ctx, cell, def, level, cx, cy, angle, recoil) {
+  Renderer.prototype.drawTowerShape = function (ctx, cell, def, level, cx, cy, angle, recoil, branch) {
     var scale = 1 + level * 0.06;
     /* 土台 */
     ctx.fillStyle = 'rgba(0,0,0,0.35)';
@@ -1593,6 +1920,15 @@ canvas#game {
       ctx.beginPath(); ctx.arc(R * 0.35, 0, R * 0.16, 0, Math.PI * 2); ctx.fill();
     }
     ctx.restore();
+
+    /* Lv4(進化済み)は光る枠を付ける。進化先で色が違う */
+    if (branch !== null && branch !== undefined) {
+      ctx.strokeStyle = branch === 0 ? '#ffd75e' : '#7fdcff';
+      ctx.lineWidth = Math.max(2, cell * 0.055);
+      ctx.beginPath();
+      ctx.roundRect(cx - cell * 0.4, cy - cell * 0.4, cell * 0.8, cell * 0.8, cell * 0.14);
+      ctx.stroke();
+    }
 
     /* レベルの印(★の代わりの小さな点) */
     for (var p = 0; p <= level; p++) {
@@ -1691,6 +2027,28 @@ canvas#game {
       }
       ctx.restore();
 
+      /* Wave特性が付いている敵の印 */
+      if (e.affix) {
+        ctx.strokeStyle = e.affix.color;
+        ctx.globalAlpha = 0.9;
+        ctx.lineWidth = Math.max(1.5, cell * 0.045);
+        ctx.beginPath();
+        ctx.arc(x, y, rad * 1.5, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+      }
+      /* 燃えている敵 */
+      if (e.burn > 0) {
+        ctx.fillStyle = 'rgba(255,150,50,0.55)';
+        for (var fi = 0; fi < 3; fi++) {
+          var fa = this.t * 6 + fi * 2.1;
+          ctx.beginPath();
+          ctx.arc(x + Math.cos(fa) * rad * 0.6, y - rad * 0.8 - (fi * 0.12 + (this.t * 1.5 % 0.3)) * cell,
+            cell * 0.05, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+
       /* 凍結中の印 */
       if (e.slowTimer > 0) {
         ctx.strokeStyle = 'rgba(150,225,255,0.9)';
@@ -1764,6 +2122,12 @@ canvas#game {
         ctx.lineTo(f.x2 * cell, f.y2 * cell);
         ctx.stroke();
         ctx.globalAlpha = 1;
+      } else if (f.kind === 'flash') {
+        ctx.save();
+        ctx.globalAlpha = Math.max(0, f.life / f.max) * 0.9;
+        ctx.fillStyle = f.color;
+        ctx.fillRect(0, 0, C.GRID_COLS * cell, C.GRID_ROWS * cell);
+        ctx.restore();
       } else if (f.kind === 'text') {
         ctx.globalAlpha = Math.max(0, Math.min(1, f.life / f.max * 1.6));
         ctx.fillStyle = f.color;
@@ -1900,6 +2264,7 @@ canvas#game {
     started: false,
     overlay: 'start',
     buildType: null,
+    aimAbility: null,
     selected: null,
     pointerDown: false,
     lastPanelUpdate: 0
@@ -1980,13 +2345,83 @@ canvas#game {
 
   function cancelBuild() {
     state.buildType = null;
+    state.aimAbility = null;
     renderer.buildType = null;
+    renderer.aimAbility = null;
     renderer.hoverCell = null;
+    Object.keys(abilityEls).forEach(function (k) {
+      abilityEls[k].classList.remove('aiming');
+    });
     Object.keys(cards).forEach(function (k) { cards[k].classList.remove('selected'); });
     $('btn-wave').hidden = false;
     $('btn-cancel-build').hidden = true;
     $('wave-preview').classList.remove('building');
     lastHud.pv = null;
+  }
+
+  /* ---- アクティブスキル ------------------------------------------------ */
+  var abilityEls = {};
+
+  function buildAbilities() {
+    var wrap = $('abilities');
+    wrap.innerHTML = '';
+    C.ABILITY_ORDER.forEach(function (key) {
+      var def = C.ABILITIES[key];
+      var btn = doc.createElement('button');
+      btn.className = 'ab-btn';
+      btn.dataset.ability = key;
+      btn.innerHTML = '<i class="cd"></i><span class="ico">' + def.icon + '</span>' +
+        '<span class="nm">' + def.name + '</span><span class="sec"></span>';
+      btn.addEventListener('click', function () { onAbilityTap(key); });
+      wrap.appendChild(btn);
+      abilityEls[key] = btn;
+    });
+  }
+
+  function onAbilityTap(key) {
+    var def = C.ABILITIES[key];
+    Sfx.unlock();
+    if (!game.abilityReady(key)) {
+      Sfx.error();
+      toast(def.name + ' は充填中');
+      return;
+    }
+    if (state.aimAbility === key) { cancelBuild(); return; }
+    if (def.aimed) {
+      closePanel();
+      cancelBuild();
+      state.aimAbility = key;
+      renderer.aimAbility = def;
+      $('btn-wave').hidden = true;
+      $('btn-cancel-build').hidden = false;
+      var pv = $('wave-preview');
+      pv.classList.add('building');
+      pv.textContent = def.name + ' を落とす場所をタップ';
+      lastHud.pv = null;
+      abilityEls[key].classList.add('aiming');
+      return;
+    }
+    var res = game.useAbility(key);
+    if (res.ok) { Sfx.ice(); toast(def.name + '! ' + res.frozen + '体を凍結'); }
+  }
+
+  function updateAbilityButtons() {
+    C.ABILITY_ORDER.forEach(function (key) {
+      var btn = abilityEls[key];
+      if (!btn) return;
+      var def = C.ABILITIES[key];
+      var cd = game.abilities[key].cd;
+      var ready = cd <= 0;
+      if (btn.dataset.ready !== String(ready)) {
+        btn.classList.toggle('ready', ready);
+        btn.dataset.ready = String(ready);
+      }
+      var pct = ready ? 0 : (cd / def.cooldown) * 100;
+      btn.querySelector('.cd').style.width = pct.toFixed(1) + '%';
+      var label = ready ? '' : Math.ceil(cd) + 's';
+      var sec = btn.querySelector('.sec');
+      if (sec.textContent !== label) sec.textContent = label;
+    });
   }
 
   /* ---- タワー詳細パネル ----------------------------------------------- */
@@ -2022,11 +2457,14 @@ canvas#game {
 
     var def = t.def;
     var st = game.towerStats(t);
-    var next = def.levels[t.level + 1] || null;
+    var opt0 = game.upgradeOptions(t)[0];
+    var next = (opt0 && game.upgradeOptions(t).length === 1) ? opt0.stats : null;
 
     drawMiniTower(panelEl.querySelector('.tp-icon'), def, t.level);
     $('tp-name').textContent = def.name;
-    $('tp-level').textContent = 'Lv' + (t.level + 1) + (next ? '' : ' (MAX)');
+    $('tp-level').textContent = 'Lv' + (t.level + 1) +
+      (t.branch !== null && t.branch !== undefined ? ' ' + def.branches[t.branch].label : '') +
+      (game.isMaxLevel(t) ? ' (MAX)' : '');
 
     var rows = [
       ['攻撃力', st.dmg, next && next.dmg],
@@ -2050,15 +2488,60 @@ canvas#game {
     }).join('');
 
     var upBtn = $('btn-upgrade');
-    var cost = game.upgradeCost(t);
-    if (cost === null) {
-      upBtn.disabled = true;
-      $('up-cost').textContent = 'MAX';
+    var brWrap = $('tp-branches');
+    var opts = game.upgradeOptions(t);
+    var isBranch = opts.length > 1;
+
+    if (isBranch) {
+      /* Lv4は2つの進化先から選ぶ */
+      brWrap.hidden = false;
+      upBtn.hidden = true;
+      var sig = opts.map(function (o) { return o.index + ':' + (game.gold >= o.cost); }).join('|');
+      if (brWrap.dataset.sig !== sig) {
+        brWrap.dataset.sig = sig;
+        brWrap.innerHTML = '';
+        opts.forEach(function (o) {
+          var btn = doc.createElement('button');
+          btn.className = 'br-btn';
+          btn.disabled = game.gold < o.cost;
+          btn.innerHTML = '<span><span class="bl">⚡' + o.label + '</span><br>' +
+            '<span class="bn">' + o.note + '</span></span>' +
+            '<span class="bc">' + o.cost + '</span>';
+          btn.addEventListener('click', function () { doUpgrade(o.index); });
+          brWrap.appendChild(btn);
+        });
+      }
     } else {
-      upBtn.disabled = game.gold < cost;
-      $('up-cost').textContent = cost;
+      brWrap.hidden = true;
+      brWrap.dataset.sig = '';
+      upBtn.hidden = false;
+      var cost = opts.length ? opts[0].cost : null;
+      if (cost === null) {
+        upBtn.disabled = true;
+        $('up-cost').textContent = 'MAX';
+      } else {
+        upBtn.disabled = game.gold < cost;
+        $('up-cost').textContent = cost;
+      }
     }
     $('sell-val').textContent = '+' + game.sellValue(t);
+  }
+
+  function doUpgrade(branchIndex) {
+    var t = state.selected;
+    if (!t) return;
+    var res = game.upgrade(t, branchIndex);
+    if (res.ok) {
+      Sfx.upgrade();
+      var label = (t.branch !== null && t.branch !== undefined)
+        ? t.def.name + ' → ' + t.def.branches[t.branch].label
+        : t.def.name + ' Lv' + (t.level + 1);
+      toast(label + ' に強化');
+      updatePanel(true);
+    } else {
+      Sfx.error();
+      toast(res.reason === 'gold' ? 'ゴールドが足りません' : 'これ以上強化できません');
+    }
   }
 
   /* ---- HUD ------------------------------------------------------------ */
@@ -2116,8 +2599,12 @@ canvas#game {
       pv = 'Wave ' + previewWave + ': ' + Object.keys(parts).map(function (k) {
         return C.ENEMIES[k].name + '×' + parts[k];
       }).join(' / ');
+      if (def.affix) {
+        var af = C.AFFIXES[def.affix];
+        pv += '  ' + af.icon + af.name;
+      }
     }
-    if (!state.buildType && lastHud.pv !== pv) {
+    if (!state.buildType && !state.aimAbility && lastHud.pv !== pv) {
       $('wave-preview').textContent = pv;
       lastHud.pv = pv;
     }
@@ -2140,6 +2627,30 @@ canvas#game {
     bossBar.querySelector('span').textContent = 'BOSS  ' + Math.ceil(Math.max(0, boss.hp));
   }
 
+  /* ---- 進行中Waveの特性バッジ ------------------------------------------ */
+  var affixEl = $('affix-badge');
+  function updateAffixBadge() {
+    var key = null;
+    if (game.phase === 'wave') {
+      for (var i = 0; i < game.pendingWaves.length; i++) {
+        var w = C.WAVES[game.pendingWaves[i] - 1];
+        if (w && w.affix) { key = w.affix; break; }
+      }
+    }
+    if (!key) {
+      if (!affixEl.hidden) affixEl.hidden = true;
+      lastHud.affix = null;
+      return;
+    }
+    if (lastHud.affix !== key) {
+      var af = C.AFFIXES[key];
+      affixEl.hidden = false;
+      affixEl.style.color = af.color;
+      affixEl.textContent = af.icon + ' ' + af.name + ' ' + af.short;
+      lastHud.affix = key;
+    }
+  }
+
   /* ---- オーバーレイ ---------------------------------------------------- */
   function showOverlay(kind) {
     state.overlay = kind;
@@ -2157,9 +2668,11 @@ canvas#game {
         '② 地図の<b>光ったマス</b>をタップして設置<br>' +
         '③ <b>WAVE開始</b>を押すと敵が出現<br>' +
         '④ 敵を倒すと<b>ゴールド</b>が増える<br>' +
-        '⑤ 置いたタワーをタップで<b>強化 / 売却</b><br><br>' +
+        '⑤ 置いたタワーをタップで<b>強化 / 売却</b><br>' +
+        '⑥ <b>☄メテオ・❄氷結</b>は時間で回復。ピンチに使おう<br><br>' +
         '<b>コツ:</b> アイスで足を止めてキャノンで巻き込み、ボスにはスナイパー。' +
-        '同じタワーばかりでは後半は勝てません。' +
+        '同じタワーばかりでは後半は勝てません。<br>' +
+        'Lv4では<b>2つの進化先から選択</b>できます。' +
         '</div>';
       btn.textContent = 'スタート';
     } else if (kind === 'pause') {
@@ -2201,6 +2714,7 @@ canvas#game {
     lastHud = {};
     cancelBuild();
     closePanel();
+    affixEl.hidden = true;
     state.paused = false;
     state.speed = 1;
     $('btn-speed').textContent = '×1';
@@ -2214,14 +2728,14 @@ canvas#game {
   function onPointerDown(ev) {
     Sfx.unlock();
     state.pointerDown = true;
-    if (state.buildType) {
+    if (state.buildType || state.aimAbility) {
       renderer.hoverCell = renderer.cellAt(ev.clientX, ev.clientY);
     }
     ev.preventDefault();
   }
 
   function onPointerMove(ev) {
-    if (!state.pointerDown || !state.buildType) return;
+    if (!state.pointerDown || (!state.buildType && !state.aimAbility)) return;
     renderer.hoverCell = renderer.cellAt(ev.clientX, ev.clientY);
     ev.preventDefault();
   }
@@ -2233,6 +2747,20 @@ canvas#game {
     renderer.hoverCell = null;
 
     if (game.phase === 'victory' || game.phase === 'defeat') return;
+
+    if (state.aimAbility) {
+      var key = state.aimAbility;
+      var res = game.useAbility(key, cellPos.x, cellPos.y);
+      if (res.ok) {
+        Sfx.cannon();
+        toast(C.ABILITIES[key].name + '! ' + res.hits + '体に命中');
+      } else {
+        Sfx.error();
+        toast('まだ使えません');
+      }
+      cancelBuild();
+      return;
+    }
 
     if (state.buildType) {
       var res = game.build(cellPos.c, cellPos.r, state.buildType);
@@ -2278,6 +2806,8 @@ canvas#game {
     renderer.draw(game, dt);
     updateHud();
     updateBossBar();
+    updateAffixBadge();
+    updateAbilityButtons();
     if (state.selected) updatePanel(false);
     global.requestAnimationFrame(frame);
   }
@@ -2322,6 +2852,7 @@ canvas#game {
   /* ---- 起動 ------------------------------------------------------------ */
   function init() {
     buildPalette();
+    buildAbilities();
     fit();
     updateHud();
     showOverlay('start');
@@ -2336,13 +2867,7 @@ canvas#game {
     $('btn-cancel-build').addEventListener('click', cancelBuild);
     $('btn-close-panel').addEventListener('click', closePanel);
 
-    $('btn-upgrade').addEventListener('click', function () {
-      var t = state.selected;
-      if (!t) return;
-      var res = game.upgrade(t);
-      if (res.ok) { Sfx.upgrade(); toast(t.def.name + ' Lv' + (t.level + 1) + ' に強化'); updatePanel(true); }
-      else { Sfx.error(); toast(res.reason === 'gold' ? 'ゴールドが足りません' : 'これ以上強化できません'); }
-    });
+    $('btn-upgrade').addEventListener('click', function () { doUpgrade(null); });
 
     $('btn-sell').addEventListener('click', function () {
       var t = state.selected;
@@ -2356,7 +2881,10 @@ canvas#game {
       var res = game.startWave();
       if (res.ok) {
         var isBoss = game.wave === C.TOTAL_WAVES;
-        banner(isBoss ? 'FINAL WAVE' : 'WAVE ' + game.wave, isBoss);
+        var wdef = C.WAVES[game.wave - 1];
+        var btxt = isBoss ? 'FINAL WAVE' : 'WAVE ' + game.wave;
+        if (wdef.affix) btxt += '  ' + C.AFFIXES[wdef.affix].icon + C.AFFIXES[wdef.affix].name;
+        banner(btxt, isBoss);
         if (!isBoss) Sfx.build();
         updateHud();
       }

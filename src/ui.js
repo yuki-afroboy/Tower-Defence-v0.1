@@ -22,6 +22,7 @@
     started: false,
     overlay: 'start',
     buildType: null,
+    aimAbility: null,
     selected: null,
     pointerDown: false,
     lastPanelUpdate: 0
@@ -102,13 +103,83 @@
 
   function cancelBuild() {
     state.buildType = null;
+    state.aimAbility = null;
     renderer.buildType = null;
+    renderer.aimAbility = null;
     renderer.hoverCell = null;
+    Object.keys(abilityEls).forEach(function (k) {
+      abilityEls[k].classList.remove('aiming');
+    });
     Object.keys(cards).forEach(function (k) { cards[k].classList.remove('selected'); });
     $('btn-wave').hidden = false;
     $('btn-cancel-build').hidden = true;
     $('wave-preview').classList.remove('building');
     lastHud.pv = null;
+  }
+
+  /* ---- アクティブスキル ------------------------------------------------ */
+  var abilityEls = {};
+
+  function buildAbilities() {
+    var wrap = $('abilities');
+    wrap.innerHTML = '';
+    C.ABILITY_ORDER.forEach(function (key) {
+      var def = C.ABILITIES[key];
+      var btn = doc.createElement('button');
+      btn.className = 'ab-btn';
+      btn.dataset.ability = key;
+      btn.innerHTML = '<i class="cd"></i><span class="ico">' + def.icon + '</span>' +
+        '<span class="nm">' + def.name + '</span><span class="sec"></span>';
+      btn.addEventListener('click', function () { onAbilityTap(key); });
+      wrap.appendChild(btn);
+      abilityEls[key] = btn;
+    });
+  }
+
+  function onAbilityTap(key) {
+    var def = C.ABILITIES[key];
+    Sfx.unlock();
+    if (!game.abilityReady(key)) {
+      Sfx.error();
+      toast(def.name + ' は充填中');
+      return;
+    }
+    if (state.aimAbility === key) { cancelBuild(); return; }
+    if (def.aimed) {
+      closePanel();
+      cancelBuild();
+      state.aimAbility = key;
+      renderer.aimAbility = def;
+      $('btn-wave').hidden = true;
+      $('btn-cancel-build').hidden = false;
+      var pv = $('wave-preview');
+      pv.classList.add('building');
+      pv.textContent = def.name + ' を落とす場所をタップ';
+      lastHud.pv = null;
+      abilityEls[key].classList.add('aiming');
+      return;
+    }
+    var res = game.useAbility(key);
+    if (res.ok) { Sfx.ice(); toast(def.name + '! ' + res.frozen + '体を凍結'); }
+  }
+
+  function updateAbilityButtons() {
+    C.ABILITY_ORDER.forEach(function (key) {
+      var btn = abilityEls[key];
+      if (!btn) return;
+      var def = C.ABILITIES[key];
+      var cd = game.abilities[key].cd;
+      var ready = cd <= 0;
+      if (btn.dataset.ready !== String(ready)) {
+        btn.classList.toggle('ready', ready);
+        btn.dataset.ready = String(ready);
+      }
+      var pct = ready ? 0 : (cd / def.cooldown) * 100;
+      btn.querySelector('.cd').style.width = pct.toFixed(1) + '%';
+      var label = ready ? '' : Math.ceil(cd) + 's';
+      var sec = btn.querySelector('.sec');
+      if (sec.textContent !== label) sec.textContent = label;
+    });
   }
 
   /* ---- タワー詳細パネル ----------------------------------------------- */
@@ -144,11 +215,14 @@
 
     var def = t.def;
     var st = game.towerStats(t);
-    var next = def.levels[t.level + 1] || null;
+    var opt0 = game.upgradeOptions(t)[0];
+    var next = (opt0 && game.upgradeOptions(t).length === 1) ? opt0.stats : null;
 
     drawMiniTower(panelEl.querySelector('.tp-icon'), def, t.level);
     $('tp-name').textContent = def.name;
-    $('tp-level').textContent = 'Lv' + (t.level + 1) + (next ? '' : ' (MAX)');
+    $('tp-level').textContent = 'Lv' + (t.level + 1) +
+      (t.branch !== null && t.branch !== undefined ? ' ' + def.branches[t.branch].label : '') +
+      (game.isMaxLevel(t) ? ' (MAX)' : '');
 
     var rows = [
       ['攻撃力', st.dmg, next && next.dmg],
@@ -172,15 +246,60 @@
     }).join('');
 
     var upBtn = $('btn-upgrade');
-    var cost = game.upgradeCost(t);
-    if (cost === null) {
-      upBtn.disabled = true;
-      $('up-cost').textContent = 'MAX';
+    var brWrap = $('tp-branches');
+    var opts = game.upgradeOptions(t);
+    var isBranch = opts.length > 1;
+
+    if (isBranch) {
+      /* Lv4は2つの進化先から選ぶ */
+      brWrap.hidden = false;
+      upBtn.hidden = true;
+      var sig = opts.map(function (o) { return o.index + ':' + (game.gold >= o.cost); }).join('|');
+      if (brWrap.dataset.sig !== sig) {
+        brWrap.dataset.sig = sig;
+        brWrap.innerHTML = '';
+        opts.forEach(function (o) {
+          var btn = doc.createElement('button');
+          btn.className = 'br-btn';
+          btn.disabled = game.gold < o.cost;
+          btn.innerHTML = '<span><span class="bl">⚡' + o.label + '</span><br>' +
+            '<span class="bn">' + o.note + '</span></span>' +
+            '<span class="bc">' + o.cost + '</span>';
+          btn.addEventListener('click', function () { doUpgrade(o.index); });
+          brWrap.appendChild(btn);
+        });
+      }
     } else {
-      upBtn.disabled = game.gold < cost;
-      $('up-cost').textContent = cost;
+      brWrap.hidden = true;
+      brWrap.dataset.sig = '';
+      upBtn.hidden = false;
+      var cost = opts.length ? opts[0].cost : null;
+      if (cost === null) {
+        upBtn.disabled = true;
+        $('up-cost').textContent = 'MAX';
+      } else {
+        upBtn.disabled = game.gold < cost;
+        $('up-cost').textContent = cost;
+      }
     }
     $('sell-val').textContent = '+' + game.sellValue(t);
+  }
+
+  function doUpgrade(branchIndex) {
+    var t = state.selected;
+    if (!t) return;
+    var res = game.upgrade(t, branchIndex);
+    if (res.ok) {
+      Sfx.upgrade();
+      var label = (t.branch !== null && t.branch !== undefined)
+        ? t.def.name + ' → ' + t.def.branches[t.branch].label
+        : t.def.name + ' Lv' + (t.level + 1);
+      toast(label + ' に強化');
+      updatePanel(true);
+    } else {
+      Sfx.error();
+      toast(res.reason === 'gold' ? 'ゴールドが足りません' : 'これ以上強化できません');
+    }
   }
 
   /* ---- HUD ------------------------------------------------------------ */
@@ -238,8 +357,12 @@
       pv = 'Wave ' + previewWave + ': ' + Object.keys(parts).map(function (k) {
         return C.ENEMIES[k].name + '×' + parts[k];
       }).join(' / ');
+      if (def.affix) {
+        var af = C.AFFIXES[def.affix];
+        pv += '  ' + af.icon + af.name;
+      }
     }
-    if (!state.buildType && lastHud.pv !== pv) {
+    if (!state.buildType && !state.aimAbility && lastHud.pv !== pv) {
       $('wave-preview').textContent = pv;
       lastHud.pv = pv;
     }
@@ -262,6 +385,30 @@
     bossBar.querySelector('span').textContent = 'BOSS  ' + Math.ceil(Math.max(0, boss.hp));
   }
 
+  /* ---- 進行中Waveの特性バッジ ------------------------------------------ */
+  var affixEl = $('affix-badge');
+  function updateAffixBadge() {
+    var key = null;
+    if (game.phase === 'wave') {
+      for (var i = 0; i < game.pendingWaves.length; i++) {
+        var w = C.WAVES[game.pendingWaves[i] - 1];
+        if (w && w.affix) { key = w.affix; break; }
+      }
+    }
+    if (!key) {
+      if (!affixEl.hidden) affixEl.hidden = true;
+      lastHud.affix = null;
+      return;
+    }
+    if (lastHud.affix !== key) {
+      var af = C.AFFIXES[key];
+      affixEl.hidden = false;
+      affixEl.style.color = af.color;
+      affixEl.textContent = af.icon + ' ' + af.name + ' ' + af.short;
+      lastHud.affix = key;
+    }
+  }
+
   /* ---- オーバーレイ ---------------------------------------------------- */
   function showOverlay(kind) {
     state.overlay = kind;
@@ -279,9 +426,11 @@
         '② 地図の<b>光ったマス</b>をタップして設置<br>' +
         '③ <b>WAVE開始</b>を押すと敵が出現<br>' +
         '④ 敵を倒すと<b>ゴールド</b>が増える<br>' +
-        '⑤ 置いたタワーをタップで<b>強化 / 売却</b><br><br>' +
+        '⑤ 置いたタワーをタップで<b>強化 / 売却</b><br>' +
+        '⑥ <b>☄メテオ・❄氷結</b>は時間で回復。ピンチに使おう<br><br>' +
         '<b>コツ:</b> アイスで足を止めてキャノンで巻き込み、ボスにはスナイパー。' +
-        '同じタワーばかりでは後半は勝てません。' +
+        '同じタワーばかりでは後半は勝てません。<br>' +
+        'Lv4では<b>2つの進化先から選択</b>できます。' +
         '</div>';
       btn.textContent = 'スタート';
     } else if (kind === 'pause') {
@@ -323,6 +472,7 @@
     lastHud = {};
     cancelBuild();
     closePanel();
+    affixEl.hidden = true;
     state.paused = false;
     state.speed = 1;
     $('btn-speed').textContent = '×1';
@@ -336,14 +486,14 @@
   function onPointerDown(ev) {
     Sfx.unlock();
     state.pointerDown = true;
-    if (state.buildType) {
+    if (state.buildType || state.aimAbility) {
       renderer.hoverCell = renderer.cellAt(ev.clientX, ev.clientY);
     }
     ev.preventDefault();
   }
 
   function onPointerMove(ev) {
-    if (!state.pointerDown || !state.buildType) return;
+    if (!state.pointerDown || (!state.buildType && !state.aimAbility)) return;
     renderer.hoverCell = renderer.cellAt(ev.clientX, ev.clientY);
     ev.preventDefault();
   }
@@ -355,6 +505,20 @@
     renderer.hoverCell = null;
 
     if (game.phase === 'victory' || game.phase === 'defeat') return;
+
+    if (state.aimAbility) {
+      var key = state.aimAbility;
+      var res = game.useAbility(key, cellPos.x, cellPos.y);
+      if (res.ok) {
+        Sfx.cannon();
+        toast(C.ABILITIES[key].name + '! ' + res.hits + '体に命中');
+      } else {
+        Sfx.error();
+        toast('まだ使えません');
+      }
+      cancelBuild();
+      return;
+    }
 
     if (state.buildType) {
       var res = game.build(cellPos.c, cellPos.r, state.buildType);
@@ -400,6 +564,8 @@
     renderer.draw(game, dt);
     updateHud();
     updateBossBar();
+    updateAffixBadge();
+    updateAbilityButtons();
     if (state.selected) updatePanel(false);
     global.requestAnimationFrame(frame);
   }
@@ -444,6 +610,7 @@
   /* ---- 起動 ------------------------------------------------------------ */
   function init() {
     buildPalette();
+    buildAbilities();
     fit();
     updateHud();
     showOverlay('start');
@@ -458,13 +625,7 @@
     $('btn-cancel-build').addEventListener('click', cancelBuild);
     $('btn-close-panel').addEventListener('click', closePanel);
 
-    $('btn-upgrade').addEventListener('click', function () {
-      var t = state.selected;
-      if (!t) return;
-      var res = game.upgrade(t);
-      if (res.ok) { Sfx.upgrade(); toast(t.def.name + ' Lv' + (t.level + 1) + ' に強化'); updatePanel(true); }
-      else { Sfx.error(); toast(res.reason === 'gold' ? 'ゴールドが足りません' : 'これ以上強化できません'); }
-    });
+    $('btn-upgrade').addEventListener('click', function () { doUpgrade(null); });
 
     $('btn-sell').addEventListener('click', function () {
       var t = state.selected;
@@ -478,7 +639,10 @@
       var res = game.startWave();
       if (res.ok) {
         var isBoss = game.wave === C.TOTAL_WAVES;
-        banner(isBoss ? 'FINAL WAVE' : 'WAVE ' + game.wave, isBoss);
+        var wdef = C.WAVES[game.wave - 1];
+        var btxt = isBoss ? 'FINAL WAVE' : 'WAVE ' + game.wave;
+        if (wdef.affix) btxt += '  ' + C.AFFIXES[wdef.affix].icon + C.AFFIXES[wdef.affix].name;
+        banner(btxt, isBoss);
         if (!isBoss) Sfx.build();
         updateHud();
       }

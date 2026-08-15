@@ -56,9 +56,39 @@ test('アイスを混ぜると生存力が上がる (組み合わせに意味が
   assert.equal(better, SEEDS.length, 'アイスを足しても強くならない');
 });
 
-test('最終Waveのボスは理想プレイなら倒しきれる', () => {
-  const { game, waves } = runPlan(byName('バランス型'), { seed: 7 });
-  const last = waves[waves.length - 1];
-  assert.equal(game.phase, 'victory');
-  assert.ok(!last.leaks.boss, 'ボスが拠点まで到達している');
+test('最終Waveのボスは理想プレイ(スキル使用)なら倒しきれる', () => {
+  for (const seed of SEEDS) {
+    const { game, waves } = runPlan(byName('バランス型'), { seed, abilities: true });
+    const last = waves[waves.length - 1];
+    assert.equal(game.phase, 'victory', `seed=${seed} でクリアできない`);
+    assert.ok(!last.leaks.boss, `seed=${seed} でボスが拠点まで到達している`);
+  }
+});
+
+test('スキルを使わなくても理想プレイならクリアできる(スキルは必須ではない)', () => {
+  for (const seed of SEEDS) {
+    const { game } = runPlan(byName('バランス型'), { seed, abilities: false });
+    assert.equal(game.phase, 'victory',
+      `seed=${seed} スキル無しで勝てない (Wave${game.wave}, HP${game.hp})`);
+  }
+});
+
+test('スキルを完璧に使っても、1種類だけのタワーでは勝てない', () => {
+  for (const name of ['アーチャーのみ', 'キャノンのみ', 'スナイパーのみ', 'アイスのみ']) {
+    for (const seed of SEEDS) {
+      const { game } = runPlan(byName(name), { seed, abilities: true });
+      assert.equal(game.phase, 'defeat',
+        `${name} が seed=${seed} でスキル込みなら勝ててしまう (HP${game.hp})`);
+    }
+  }
+});
+
+test('スキルを使うと生存力が上がる(上手さが報われる)', () => {
+  let better = 0;
+  for (const seed of SEEDS) {
+    const off = runPlan(byName('バランス型'), { seed, abilities: false });
+    const on = runPlan(byName('バランス型'), { seed, abilities: true });
+    if (on.game.hp > off.game.hp) better++;
+  }
+  assert.ok(better >= SEEDS.length - 1, `スキルを使っても残HPが増えない (${better}/${SEEDS.length})`);
 });

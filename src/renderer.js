@@ -29,6 +29,7 @@
     this.dpr = 1;
     this.t = 0;
     this.buildType = null;    /* 建設モードで選んでいるタワー種別 */
+    this.aimAbility = null;   /* 照準中のアクティブスキル */
     this.selected = null;     /* 選択中のタワー */
     this.hoverCell = null;
   }
@@ -76,6 +77,7 @@
     this.drawRocks(ctx, cell);
     this.drawBase(ctx, cell, game);
     this.drawBuildHints(ctx, cell, game);
+    this.drawAbilityAim(ctx, cell);
     this.drawRangePreview(ctx, cell, game);
     this.drawTowers(ctx, cell, game);
     this.drawEnemies(ctx, cell, game);
@@ -246,6 +248,32 @@
     }
   };
 
+  /* メテオの落下地点プレビュー */
+  Renderer.prototype.drawAbilityAim = function (ctx, cell) {
+    var def = this.aimAbility;
+    var h = this.hoverCell;
+    if (!def || !def.aimed || !h) return;
+    var cx = h.x * cell, cy = h.y * cell;
+    var pulse = 1 + Math.sin(this.t * 9) * 0.05;
+    ctx.save();
+    ctx.fillStyle = 'rgba(255,140,60,0.18)';
+    ctx.beginPath();
+    ctx.arc(cx, cy, def.radius * cell * pulse, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#ff9a3c';
+    ctx.lineWidth = 3;
+    ctx.setLineDash([6, 5]);
+    ctx.beginPath();
+    ctx.arc(cx, cy, def.radius * cell * pulse, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.beginPath();
+    ctx.moveTo(cx - cell * 0.3, cy); ctx.lineTo(cx + cell * 0.3, cy);
+    ctx.moveTo(cx, cy - cell * 0.3); ctx.lineTo(cx, cy + cell * 0.3);
+    ctx.stroke();
+    ctx.restore();
+  };
+
   Renderer.prototype.drawRangePreview = function (ctx, cell, game) {
     var t = this.selected;
     if (!t || game.towers.indexOf(t) < 0) return;
@@ -276,11 +304,11 @@
   Renderer.prototype.drawTowers = function (ctx, cell, game) {
     for (var i = 0; i < game.towers.length; i++) {
       var t = game.towers[i];
-      this.drawTowerShape(ctx, cell, t.def, t.level, t.x * cell, t.y * cell, t.angle, t.recoil);
+      this.drawTowerShape(ctx, cell, t.def, t.level, t.x * cell, t.y * cell, t.angle, t.recoil, t.branch);
     }
   };
 
-  Renderer.prototype.drawTowerShape = function (ctx, cell, def, level, cx, cy, angle, recoil) {
+  Renderer.prototype.drawTowerShape = function (ctx, cell, def, level, cx, cy, angle, recoil, branch) {
     var scale = 1 + level * 0.06;
     /* 土台 */
     ctx.fillStyle = 'rgba(0,0,0,0.35)';
@@ -347,6 +375,15 @@
       ctx.beginPath(); ctx.arc(R * 0.35, 0, R * 0.16, 0, Math.PI * 2); ctx.fill();
     }
     ctx.restore();
+
+    /* Lv4(進化済み)は光る枠を付ける。進化先で色が違う */
+    if (branch !== null && branch !== undefined) {
+      ctx.strokeStyle = branch === 0 ? '#ffd75e' : '#7fdcff';
+      ctx.lineWidth = Math.max(2, cell * 0.055);
+      ctx.beginPath();
+      ctx.roundRect(cx - cell * 0.4, cy - cell * 0.4, cell * 0.8, cell * 0.8, cell * 0.14);
+      ctx.stroke();
+    }
 
     /* レベルの印(★の代わりの小さな点) */
     for (var p = 0; p <= level; p++) {
@@ -445,6 +482,28 @@
       }
       ctx.restore();
 
+      /* Wave特性が付いている敵の印 */
+      if (e.affix) {
+        ctx.strokeStyle = e.affix.color;
+        ctx.globalAlpha = 0.9;
+        ctx.lineWidth = Math.max(1.5, cell * 0.045);
+        ctx.beginPath();
+        ctx.arc(x, y, rad * 1.5, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+      }
+      /* 燃えている敵 */
+      if (e.burn > 0) {
+        ctx.fillStyle = 'rgba(255,150,50,0.55)';
+        for (var fi = 0; fi < 3; fi++) {
+          var fa = this.t * 6 + fi * 2.1;
+          ctx.beginPath();
+          ctx.arc(x + Math.cos(fa) * rad * 0.6, y - rad * 0.8 - (fi * 0.12 + (this.t * 1.5 % 0.3)) * cell,
+            cell * 0.05, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+
       /* 凍結中の印 */
       if (e.slowTimer > 0) {
         ctx.strokeStyle = 'rgba(150,225,255,0.9)';
@@ -518,6 +577,12 @@
         ctx.lineTo(f.x2 * cell, f.y2 * cell);
         ctx.stroke();
         ctx.globalAlpha = 1;
+      } else if (f.kind === 'flash') {
+        ctx.save();
+        ctx.globalAlpha = Math.max(0, f.life / f.max) * 0.9;
+        ctx.fillStyle = f.color;
+        ctx.fillRect(0, 0, C.GRID_COLS * cell, C.GRID_ROWS * cell);
+        ctx.restore();
       } else if (f.kind === 'text') {
         ctx.globalAlpha = Math.max(0, Math.min(1, f.life / f.max * 1.6));
         ctx.fillStyle = f.color;

@@ -277,6 +277,126 @@ test('売却: ゴールドが戻り、マスが空く', async () => {
   assert.equal(await page.isVisible('#tower-panel'), false, 'パネルが閉じていない');
 });
 
+test('スキル: 2つのボタンがあり、氷結を使うとクールダウンに入る', async () => {
+  await resetUi();
+  assert.equal(await page.locator('.ab-btn').count(), 2);
+  assert.equal(await page.locator('.ab-btn.ready').count(), 2, '最初は両方使えるはず');
+
+  /* 敵を出してから使う */
+  await page.evaluate(() => {
+    const g = window.LFD.app.game;
+    for (let i = 0; i < 4; i++) {
+      const e = g.spawnEnemy('normal', 1, 1);
+      e.dist = 3 + i * 2;
+      g.updateEnemyPos(e);
+    }
+  });
+  await page.locator('.ab-btn[data-ability="freeze"]').click();
+  await page.waitForTimeout(200);
+
+  const st = await page.evaluate(() => {
+    const g = window.LFD.app.game;
+    return { cd: g.abilities.freeze.cd, slowed: g.enemies.filter(e => e.slow > 0).length };
+  });
+  assert.ok(st.cd > 0, 'クールダウンに入っていない');
+  assert.ok(st.slowed >= 4, '敵が減速していない');
+  assert.match(await page.textContent('.ab-btn[data-ability="freeze"] .sec'), /^\d+s$/, '残り秒数が出ていない');
+  assert.equal(await page.locator('.ab-btn[data-ability="freeze"].ready').count(), 0, '使用後も準備完了のまま');
+  await page.evaluate(() => { window.LFD.app.game.enemies.length = 0; });
+});
+
+test('スキル: メテオは照準モードに入り、盤面タップで発動する', async () => {
+  await resetUi();
+  const boxOf = () => page.evaluate(() => {
+    const r = document.getElementById('game').getBoundingClientRect();
+    return { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) };
+  });
+  const before = await boxOf();
+
+  await page.locator('.ab-btn[data-ability="meteor"]').click();
+  await page.waitForTimeout(250);
+  assert.equal(await page.locator('.ab-btn.aiming').count(), 1, '照準モードにならない');
+  assert.match(await page.textContent('#wave-preview'), /メテオ/, '照準中の案内が出ていない');
+  assert.equal(await page.isVisible('#btn-cancel-build'), true);
+  assert.deepEqual(await boxOf(), before, '照準モードで盤面が動いた');
+
+  await page.evaluate(() => {
+    const g = window.LFD.app.game;
+    const e = g.spawnEnemy('normal', 1, 1);
+    e.dist = 3; e.offset = 0; g.updateEnemyPos(e);
+    window.__t = { x: e.x, y: e.y, hp: e.hp, id: e.id };
+  });
+  const t = await page.evaluate(() => window.__t);
+  const box = await page.locator('#game').boundingBox();
+  await page.mouse.click(box.x + t.x * box.width / 9, box.y + t.y * box.height / 13);
+  await page.waitForTimeout(250);
+
+  const after = await page.evaluate(() => {
+    const g = window.LFD.app.game;
+    const e = g.enemies.find(x => x.id === window.__t.id);
+    return { cd: g.abilities.meteor.cd, used: g.stats.abilitiesUsed, hp: e ? e.hp : 0 };
+  });
+  assert.ok(after.cd > 0, 'メテオがクールダウンに入っていない');
+  assert.ok(after.used >= 1);
+  assert.ok(after.hp < t.hp, '敵にダメージが入っていない');
+  assert.equal(await page.locator('.ab-btn.aiming').count(), 0, '照準モードが解除されない');
+  await page.evaluate(() => { window.LFD.app.game.enemies.length = 0; });
+});
+
+test('進化分岐: Lv3のタワーは2つの進化先から選べる', async () => {
+  await resetUi();
+  await page.evaluate(() => {
+    const g = window.LFD.app.game;
+    g.gold = 99999;
+    const t = g.towerAt(2, 2) || g.build(2, 2, 'archer').tower;
+    while (g.upgradeOptions(t).length === 1) g.upgrade(t);
+  });
+  await tapCell(2, 2);
+  await page.waitForTimeout(250);
+
+  assert.equal(await page.isVisible('#tp-branches'), true, '分岐UIが出ない');
+  assert.equal(await page.locator('.br-btn').count(), 2, '選択肢が2つない');
+  assert.equal(await page.isVisible('#btn-upgrade'), false, '通常の強化ボタンが残っている');
+  const labels = await page.locator('.br-btn .bl').allTextContents();
+  assert.notEqual(labels[0], labels[1], '進化先の名前が同じ');
+
+  await page.locator('.br-btn').nth(1).click();
+  await page.waitForTimeout(250);
+  assert.match(await page.textContent('#tp-level'), /MAX/, '進化後にMAXになっていない');
+  assert.equal(await page.isVisible('#tp-branches'), false, '進化後も選択肢が出ている');
+  const branch = await page.evaluate(() => window.LFD.app.game.towerAt(2, 2).branch);
+  assert.equal(branch, 1, '選んだ方の進化になっていない');
+  await page.click('#btn-close-panel');
+});
+
+test('Wave特性: 特性つきWaveではバッジが表示される', async () => {
+  await resetUi();
+  assert.equal(await page.isVisible('#affix-badge'), false, 'Wave外なのにバッジが出ている');
+  await page.evaluate(() => {
+    const g = window.LFD.app.game;
+    g.enemies.length = 0; g.spawnQueue.length = 0;
+    g.phase = 'ready'; g.pendingWaves = [];
+    g.wave = 7;                       /* 次は Wave8 = 重装 */
+    g.startWave();
+  });
+  await page.waitForTimeout(300);
+  assert.equal(await page.isVisible('#affix-badge'), true, '特性バッジが出ない');
+  assert.match(await page.textContent('#affix-badge'), /重装/);
+  await page.waitForTimeout(1200);
+  const armored = await page.evaluate(() =>
+    window.LFD.app.game.enemies.every(e => e.affix && e.affix.key === 'armored'));
+  assert.ok(armored, '敵に特性が付いていない');
+  await page.screenshot({ path: path.join(SHOTS, '07-affix.png') });
+
+  await page.evaluate(() => {
+    const g = window.LFD.app.game;
+    g.enemies.length = 0; g.spawnQueue.length = 0;
+    g.phase = 'ready'; g.pendingWaves = []; g.wave = 0; g.hp = g.maxHp;
+  });
+  await page.waitForTimeout(250);
+  assert.equal(await page.isVisible('#affix-badge'), false, 'Wave終了後もバッジが残る');
+});
+
 test('Wave: 開始すると敵が出てきて、倒すとゴールドが増える', async () => {
   await page.evaluate(() => {
     const app = window.LFD.app;
@@ -291,7 +411,8 @@ test('Wave: 開始すると敵が出てきて、倒すとゴールドが増え�
 
   await simulate(3);
   s = await gs();
-  assert.ok(s.enemies > 0, '敵が出てこない');
+  /* すでに倒されている場合もあるので「出現したか」を出現数と撃破数の両方で見る */
+  assert.ok(s.enemies > 0 || s.killed > 0, '敵が出てこない');
   await page.screenshot({ path: path.join(SHOTS, '03-wave.png') });
 
   const goldBefore = s.gold;
